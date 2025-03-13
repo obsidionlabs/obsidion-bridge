@@ -178,7 +178,7 @@ export class BridgeHost {
       const payload = new Uint8Array(Buffer.from(data.params.payload, "base64"))
       const decrypted = await decrypt(payload, sharedSecret, topic)
       const decryptedJson = JSON.parse(decrypted)
-      this.handleEncryptedMessage(topic, decryptedJson, data)
+      this.handleEncryptedMessage(topic, decryptedJson)
     } catch (error) {
       log("Error decrypting message:", error)
       await this.eventManager.emitError(topic, `Error decrypting message: ${error}`)
