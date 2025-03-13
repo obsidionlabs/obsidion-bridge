@@ -1,0 +1,76 @@
+import { randomBytes } from "crypto"
+import { encrypt } from "./encryption"
+import { WebSocketClient } from "./websocket"
+import debug from "debug"
+
+const log = debug("bridge")
+
+export interface JsonRpcRequest {
+  jsonrpc: string
+  id: string
+  origin?: string
+  method: string
+  params: any
+}
+
+export interface JsonRpcResponse {
+  jsonrpc: string
+  id: string
+  result: any
+}
+
+export function createJsonRpcRequest(method: string, params: any): JsonRpcRequest {
+  return {
+    jsonrpc: "2.0",
+    id: randomBytes(16).toString("hex"),
+    method,
+    params,
+  }
+}
+
+export async function createEncryptedJsonRpcRequest(
+  method: string,
+  params: any,
+  sharedSecret: Uint8Array,
+  topic: string,
+): Promise<JsonRpcRequest> {
+  const encryptedMessage = await encrypt(
+    JSON.stringify({ method, params: params || {} }),
+    sharedSecret,
+    topic,
+  )
+  return createJsonRpcRequest("encryptedMessage", {
+    payload: Buffer.from(encryptedMessage).toString("base64"),
+  })
+}
+
+export async function sendEncryptedJsonRpcRequest(
+  method: string,
+  params: any,
+  sharedSecret: Uint8Array,
+  topic: string,
+  websocket: WebSocketClient,
+): Promise<boolean> {
+  try {
+    const message = { method, params: params || {} }
+    const encryptedMessage = await encrypt(JSON.stringify(message), sharedSecret, topic)
+    const request = createJsonRpcRequest("encryptedMessage", {
+      payload: Buffer.from(encryptedMessage).toString("base64"),
+    })
+    log("Sending encrypted message (original):", message)
+    log("Sending encrypted message (encrypted):", request)
+    websocket.send(JSON.stringify(request))
+    return true
+  } catch (error) {
+    log("Error sending encrypted message:", error)
+    return false
+  }
+}
+
+export function createJsonRpcResponse(id: string, result: any): JsonRpcResponse {
+  return {
+    jsonrpc: "2.0",
+    id,
+    result,
+  }
+}

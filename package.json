@@ -1,0 +1,46 @@
+{
+  "name": "@obsidion/bridge",
+  "version": "0.1.0",
+  "description": "End-to-end encrypted WebSocket Bridge",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js",
+      "types": "./dist/esm/index.d.ts"
+    }
+  },
+  "scripts": {
+    "test": "bun test tests/*.test.ts",
+    "coverage": "bun test tests/*.test.ts --coverage",
+    "lint": "eslint src tests --ext .ts",
+    "format": "prettier . --write",
+    "build": "rimraf ./dist && bun run build:cjs && bun run build:esm",
+    "build:cjs": "tsc -p tsconfig.cjs.json",
+    "build:esm": "tsc -p tsconfig.esm.json",
+    "prepublishOnly": "bun run lint && bun run test && bun run build"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.2",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.13.1",
+    "@typescript-eslint/eslint-plugin": "^8.23.0",
+    "@typescript-eslint/parser": "^8.23.0",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-prettier": "^5.2.3",
+    "prettier": "^3.4.2",
+    "rimraf": "^6.0.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3",
+    "jest": "^29.7.0"
+
+  }
+}
