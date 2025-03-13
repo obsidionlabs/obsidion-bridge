@@ -40,7 +40,7 @@ export class BridgeHost {
   /**
    * Handle an incoming encrypted message.
    */
-  private async handleEncryptedMessage(topic: string, request: any, outerRequest: any) {
+  private async handleEncryptedMessage(topic: string, request: any) {
     log("Received encrypted message:", request)
 
     // Notify listeners about the received message

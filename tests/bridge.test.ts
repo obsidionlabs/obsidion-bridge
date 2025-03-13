@@ -1,5 +1,5 @@
 import { describe, beforeEach, afterEach, test, expect, jest, mock } from "bun:test"
-import { bytesToHex, hexToBytes } from "@noble/ciphers/utils"
+import { hexToBytes } from "@noble/ciphers/utils"
 import { getSharedSecret } from "../src/encryption"
 import { BridgeHost, BridgeSubscriber, sendEncryptedJsonRpcRequest } from "../src"
 import { MockWebSocket, waitForCallback } from "./helpers"

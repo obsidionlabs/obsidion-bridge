@@ -4,6 +4,7 @@ export function getWebSocketClient(url: string, origin?: string) {
     return new WebSocket(url)
   } else {
     // Node.js environment
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const WebSocket = require("ws")
     return new WebSocket(url, {
       headers: {

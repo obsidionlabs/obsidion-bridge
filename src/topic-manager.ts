@@ -1,6 +1,5 @@
 import { WebSocketClient } from "./websocket"
 import { KeyPair, TopicState } from "./types"
-import { bytesToHex } from "@noble/ciphers/utils"
 import { getSharedSecret } from "./encryption"
 
 /**
