@@ -27,7 +27,7 @@ export class BridgeHost {
   private eventManager = new EventManager()
 
   /**
-   * Create a new ZKPassport instance.
+   * Create a new bridge host instance.
    * @param origin The origin of your website.
    */
   constructor(origin?: string) {
@@ -197,7 +197,7 @@ export class BridgeHost {
       url,
       websocket,
       topic,
-      onBridgeConnect: (callback: () => void) =>
+      onBridgeConnect: (callback: (topic: string) => void) =>
         this.eventManager.addEventListener(topic, EventType.BridgeConnected, callback),
       onSecureChannelEstablished: (callback: () => void) =>
         this.eventManager.addEventListener(topic, EventType.SecureChannelEstablished, callback),
@@ -207,7 +207,7 @@ export class BridgeHost {
         this.eventManager.addEventListener(topic, EventType.Error, callback),
       isBridgeConnected: () => this.topicManager.isBridgeConnected(topic),
       isSecureChannelEstablished: () => this.topicManager.isSecureChannelEstablished(topic),
-      sendMessage: async (method: string, params: any) => {
+      sendSecureMessage: async (method: string, params?: any) => {
         if (!this.topicManager.isSecureChannelEstablished(topic)) {
           await this.eventManager.emitError(
             topic,
@@ -227,7 +227,7 @@ export class BridgeHost {
           return false
         }
 
-        return sendEncryptedJsonRpcRequest(method, params, sharedSecret, topic, websocket)
+        return sendEncryptedJsonRpcRequest(method, params || {}, sharedSecret, topic, websocket)
       },
       close: () => {
         const websocket = this.topicManager.getWebSocketClient(topic)

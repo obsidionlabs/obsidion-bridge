@@ -12,7 +12,7 @@ export enum EventType {
  * Bridge event callback types
  */
 export type EventCallbacks = {
-  [EventType.BridgeConnected]: () => void
+  [EventType.BridgeConnected]: (topic: string) => void
   [EventType.SecureChannelEstablished]: () => void
   [EventType.MessageReceived]: (message: any) => void
   [EventType.Error]: (error: string) => void
@@ -24,7 +24,7 @@ export type EventCallbacks = {
 export type EventListenersMap = Record<
   string,
   {
-    [EventType.BridgeConnected]: Array<() => void>
+    [EventType.BridgeConnected]: Array<(topic: string) => void>
     [EventType.SecureChannelEstablished]: Array<() => void>
     [EventType.MessageReceived]: Array<(message: any) => void>
     [EventType.Error]: Array<(error: string) => void>
@@ -43,7 +43,7 @@ export class EventManager {
   public addEventListener(
     topic: string,
     eventType: EventType.BridgeConnected,
-    callback: () => void,
+    callback: (topic: string) => void,
   ): void
   public addEventListener(
     topic: string,
@@ -79,7 +79,7 @@ export class EventManager {
   public async emitBridgeConnected(topic: string): Promise<void> {
     if (!this.eventListeners[topic]) return
     await Promise.all(
-      this.eventListeners[topic][EventType.BridgeConnected].map((callback) => callback()),
+      this.eventListeners[topic][EventType.BridgeConnected].map((callback) => callback(topic)),
     )
   }
 

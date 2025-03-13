@@ -170,7 +170,7 @@ export class BridgeSubscriber {
     return {
       websocket,
       topic,
-      onBridgeConnect: (callback: () => void) =>
+      onBridgeConnect: (callback: (topic: string) => void) =>
         this.eventManager.addEventListener(topic, EventType.BridgeConnected, callback),
       onSecureChannelEstablished: (callback: () => void) =>
         this.eventManager.addEventListener(topic, EventType.SecureChannelEstablished, callback),
@@ -180,7 +180,7 @@ export class BridgeSubscriber {
         this.eventManager.addEventListener(topic, EventType.Error, callback),
       isBridgeConnected: () => this.topicManager.isBridgeConnected(topic),
       isSecureChannelEstablished: () => this.topicManager.isSecureChannelEstablished(topic),
-      sendMessage: async (method: string, params: any) => {
+      sendSecureMessage: async (method: string, params: any) => {
         if (!this.topicManager.isSecureChannelEstablished(topic)) {
           await this.eventManager.emitError(
             topic,

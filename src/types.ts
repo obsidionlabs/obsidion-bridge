@@ -41,7 +41,7 @@ export interface BridgeConnectionResult {
   /**
    * Called when the SDK successfully connects to the bridge.
    */
-  onBridgeConnect: (callback: () => void) => void
+  onBridgeConnect: (callback: (topic: string) => void) => void
 
   /**
    * Called when a secure channel has been established.
@@ -75,7 +75,7 @@ export interface BridgeConnectionResult {
    * @param params The parameters for the message
    * @returns A promise that resolves to true if the message was sent successfully
    */
-  sendMessage: (method: string, params: any) => Promise<boolean>
+  sendSecureMessage: (method: string, params?: any) => Promise<boolean>
 
   /**
    * Close the connection to the bridge.
