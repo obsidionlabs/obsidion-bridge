@@ -13,3 +13,9 @@ bun install
 ```sh
 DEBUG=bridge* bun test
 ```
+
+## Run example
+
+```sh
+bun run scripts/example.ts
+```
