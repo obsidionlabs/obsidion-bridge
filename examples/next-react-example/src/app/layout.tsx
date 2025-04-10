@@ -37,8 +37,8 @@ export default function RootLayout({
           </div>
         </nav>
         <div className="text-center text-sm text-gray-400 mt-4 mb-4">
-          Be sure to build the package in the root first:{" "}
-          <code className="bg-gray-20 px-1 py-0.5 rounded">bun run build</code>
+          Be sure to build the package in the root!{" "}
+          <code className="bg-gray-20 px-1 py-0.5 rounded">bun run build:watch</code>
         </div>
         {children}
       </body>

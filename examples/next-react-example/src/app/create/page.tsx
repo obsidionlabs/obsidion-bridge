@@ -1,19 +1,23 @@
 "use client"
 import { useEffect, useState } from "react"
-// import { Bridge } from "@obsidion/bridge"
-import { Bridge } from "../../../../../dist/esm"
+// import { Bridge, BridgeInterface } from "@obsidion/bridge"
+import { Bridge, BridgeInterface } from "../../../../.."
 import { MessagesPanel } from "../components/MessagesPanel"
 import debug from "debug"
 
 debug.enable("bridge*")
 
-// Define the bridge interface type
-type BridgeInterface = ReturnType<typeof Bridge.create> extends Promise<infer T> ? T : never
-
 export default function CreateBridgePage() {
   const [bridge, setBridge] = useState<BridgeInterface | null>(null)
   const [connectionString, setConnectionString] = useState<string>("")
   const [messages, setMessages] = useState<string[]>([])
+
+  useEffect(() => {
+    return () => {
+      console.log("Component unmounted, closing bridge")
+      bridge?.close()
+    }
+  }, [bridge])
 
   useEffect(() => {
     const createBridge = async () => {
@@ -53,10 +57,10 @@ export default function CreateBridgePage() {
     window.open(`/join?uri=${encodeURIComponent(connectionString)}`, "_blank")
   }
 
-  const handleSendMessage = async (message: string, params: object) => {
+  const handleSendMessage = async (message: string) => {
     if (bridge && bridge.isBridgeConnected()) {
-      if (await bridge.sendMessage(message, params)) {
-        setMessages((prev) => [...prev, `Sent: ${message} ${JSON.stringify(params)}`])
+      if (await bridge.sendMessage(message)) {
+        setMessages((prev) => [...prev, `Sent: ${message}`])
       }
     } else {
       setMessages((prev) => [...prev, "Cannot send message: Bridge not connected"])
@@ -64,7 +68,7 @@ export default function CreateBridgePage() {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-8">
+    <div className="flex flex-col items-center justify-start min-h-screen p-4 pt-8">
       <h1 className="text-3xl font-bold mb-8">Create Bridge</h1>
       {connectionString && (
         <div className="mb-8 w-full max-w-[800px]">

@@ -1,15 +1,12 @@
 "use client"
 import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
-// import { Bridge } from "@obsidion/bridge"
-import { Bridge } from "../../../../../dist/esm"
+// import { Bridge, BridgeInterface } from "@obsidion/bridge"
+import { Bridge, BridgeInterface } from "../../../../.."
 import { MessagesPanel } from "../components/MessagesPanel"
 import debug from "debug"
 
 debug.enable("bridge*")
-
-// Define the bridge interface type
-type BridgeInterface = ReturnType<typeof Bridge.join> extends Promise<infer T> ? T : never
 
 export default function JoinBridgePage() {
   const searchParams = useSearchParams()
@@ -17,6 +14,13 @@ export default function JoinBridgePage() {
   const [bridge, setBridge] = useState<BridgeInterface | null>(null)
   const [messages, setMessages] = useState<string[]>([])
   const [joinStatus, setJoinStatus] = useState<"idle" | "joining" | "connected">("idle")
+
+  useEffect(() => {
+    return () => {
+      console.log("Component unmounted, closing bridge")
+      bridge?.close()
+    }
+  }, [bridge])
 
   useEffect(() => {
     // Get URI from query parameters on page load
@@ -52,8 +56,8 @@ export default function JoinBridgePage() {
         setMessages((prev) => [
           ...prev,
           "Secure channel established",
-          `Remote public key: ${bridge.getRemotePublicKey()}`,
           `Local public key: ${bridge.getPublicKey()}`,
+          `Remote public key: ${bridge.getRemotePublicKey()}`,
         ])
       })
 
@@ -71,17 +75,17 @@ export default function JoinBridgePage() {
     }
   }
 
-  const handleSendMessage = (message: string, params: object) => {
+  const handleSendMessage = (message: string) => {
     if (bridge && bridge.isBridgeConnected()) {
-      bridge.sendMessage(message, params)
-      setMessages((prev) => [...prev, `Sent: ${message} ${JSON.stringify(params)}`])
+      bridge.sendMessage(message)
+      setMessages((prev) => [...prev, `Sent: ${message}`])
     } else {
       setMessages((prev) => [...prev, "Cannot send message: Bridge not connected"])
     }
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-8">
+    <div className="flex flex-col items-center justify-start min-h-screen p-4 pt-8">
       <h1 className="text-3xl font-bold mb-8">Join Bridge</h1>
 
       <div className="mb-8 w-full max-w-[800px]">

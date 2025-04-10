@@ -25,6 +25,7 @@
     "build": "rimraf ./dist && bun run build:cjs && bun run build:esm",
     "build:cjs": "tsc -p tsconfig.cjs.json",
     "build:esm": "tsc -p tsconfig.esm.json",
+    "build:watch": "rimraf ./dist && tsc -p tsconfig.esm.json --watch",
     "prepublishOnly": "bun run lint && bun run test && bun run build"
   },
   "dependencies": {

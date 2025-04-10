@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react"
 
 interface MessagesPanelProps {
   messages: string[]
-  onSendMessage: (message: string, params: object) => void
+  onSendMessage: (message: string) => void
   defaultMessage?: string
 }
 
@@ -31,8 +31,8 @@ export function MessagesPanel({ messages, onSendMessage, defaultMessage }: Messa
 
       <div className="mt-4 space-y-2">
         <div>
-          <label htmlFor="message" className="block text-sm font-medium mb-1">
-            Send Message
+          <label htmlFor="message" className="block font-medium mb-2">
+            Send Message:
           </label>
           <div className="flex gap-2">
             <input
@@ -40,10 +40,10 @@ export function MessagesPanel({ messages, onSendMessage, defaultMessage }: Messa
               type="text"
               value={messageText}
               onChange={(e) => setMessageText(e.target.value)}
-              className="flex-1 p-2 border rounded text-sm"
+              className="flex-1 p-2 border rounded"
             />
             <button
-              onClick={() => onSendMessage(messageText, {})}
+              onClick={() => onSendMessage(messageText)}
               className="px-4 py-2 bg-foreground text-background font-medium rounded hover:bg-foreground/90 transition"
             >
               Send
