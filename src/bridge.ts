@@ -11,6 +11,8 @@ export interface CreateOptions {
   origin?: string
   bridgeId?: string
   keyPair?: KeyPair
+  resume?: boolean
+  remotePublicKey?: Uint8Array
   autoconnect?: boolean
   reconnect?: boolean
   keepalive?: boolean
@@ -22,6 +24,7 @@ export interface CreateOptions {
  */
 export interface JoinOptions {
   keyPair?: KeyPair
+  resume?: boolean
   reconnect?: boolean
   keepalive?: boolean
   debug?: boolean
@@ -33,12 +36,11 @@ export interface JoinOptions {
 export interface BridgeInterface {
   websocket: WebSocketClient | undefined
   connection: BridgeConnection
-  onConnect: (callback: () => void) => () => void
+  onConnect: (callback: (reconnection: boolean) => void) => () => void
   onSecureChannelEstablished: (callback: () => void) => () => void
   onMessage: (callback: (message: any) => void) => () => void
   onError: (callback: (error: string) => void) => () => void
   onDisconnect: (callback: () => void) => () => void
-  onReconnect: (callback: () => void) => () => void
   isBridgeConnected: () => boolean
   isSecureChannelEstablished: () => boolean
   sendMessage: (method: string, params?: any) => Promise<boolean>
@@ -46,6 +48,7 @@ export interface BridgeInterface {
   origin: string
   getPublicKey: () => string
   getRemotePublicKey: () => string
+  getKeyPair: () => KeyPair
   close: () => void
 }
 
@@ -74,7 +77,15 @@ export class Bridge {
     }
     const origin = options.origin || window?.location?.protocol + "//" + window?.location?.hostname
 
-    // Generate key pair
+    // Handle arguments for resuming an existing bridge session
+    if (options.remotePublicKey && !options.resume) {
+      throw new Error("Can only provide remotePublicKey when resuming a bridge session")
+    }
+    if (options.resume && (!options.keyPair || !options.remotePublicKey)) {
+      throw new Error("Resuming a bridge session requires a keyPair and remotePublicKey")
+    }
+
+    // Use provided key pair or generate a new one
     const keyPair = options.keyPair || (await generateECDHKeyPair())
 
     // Use creator's public key as the bridge ID
@@ -95,6 +106,13 @@ export class Bridge {
       await connection.connect(`wss://bridge.zkpassport.id?topic=${bridgeId}`)
     }
 
+    // Resume existing bridge session if requested
+    if (options.resume) {
+      // Set remote public key
+      connection.setRemotePublicKey(options.remotePublicKey!)
+      connection.resume()
+    }
+
     // Return functional interface
     return {
       websocket: connection.getWebSocket(),
@@ -104,12 +122,12 @@ export class Bridge {
       onMessage: (callback) => connection.onMessage(callback),
       onError: (callback) => connection.onError(callback),
       onDisconnect: (callback) => connection.onDisconnect(callback),
-      onReconnect: (callback) => connection.onReconnect(callback),
       isBridgeConnected: () => connection.isBridgeConnected(),
       isSecureChannelEstablished: () => connection.isSecureChannelEstablished(),
       sendMessage: (method, params) => connection.sendSecureMessage(method, params || {}),
       connectionString: connection.connectionString!,
       origin: connection.bridgeOrigin,
+      getKeyPair: () => connection.keyPair,
       getPublicKey: () => connection.getPublicKey(),
       getRemotePublicKey: () => connection.getRemotePublicKey(),
       close: () => connection.close(),
@@ -128,6 +146,14 @@ export class Bridge {
       debug.enable("bridge*")
     }
 
+    // Handle arguments for resuming an existing bridge session
+    if (options.resume && !options.keyPair) {
+      throw new Error("Resuming a bridge session requires a keyPair")
+    }
+
+    // Use provided key pair or generate a new one
+    const keyPair = options.keyPair || (await generateECDHKeyPair())
+
     // Parse URL parameters
     const { domain, pubkey } = Bridge.parseConnectionString(uri)
 
@@ -136,13 +162,10 @@ export class Bridge {
       role: "joiner",
       domain: domain,
       bridgeId: pubkey,
-      keyPair: options.keyPair,
+      keyPair,
       reconnect: options.reconnect,
       keepalive: options.keepalive,
     })
-
-    // Generate key pair
-    await connection.initializeKeyPair(options.keyPair)
 
     // Set remote public key
     connection.setRemotePublicKey(new Uint8Array(Buffer.from(pubkey, "hex")))
@@ -153,6 +176,9 @@ export class Bridge {
     // Connect to the bridge service
     await connection.connect(await connection._getWsConnectionUrl())
 
+    // Resume existing bridge session if requested
+    if (options.resume) connection.resume()
+
     // Return functional interface
     return {
       websocket: connection.getWebSocket(),
@@ -162,12 +188,12 @@ export class Bridge {
       onMessage: (callback) => connection.onMessage(callback),
       onError: (callback) => connection.onError(callback),
       onDisconnect: (callback) => connection.onDisconnect(callback),
-      onReconnect: (callback) => connection.onReconnect(callback),
       isBridgeConnected: () => connection.isBridgeConnected(),
       isSecureChannelEstablished: () => connection.isSecureChannelEstablished(),
       sendMessage: (method, params) => connection.sendSecureMessage(method, params || {}),
       connectionString: connection.connectionString!,
       origin: connection.bridgeOrigin,
+      getKeyPair: () => connection.keyPair,
       getPublicKey: () => connection.getPublicKey(),
       getRemotePublicKey: () => connection.getRemotePublicKey(),
       close: () => connection.close(),

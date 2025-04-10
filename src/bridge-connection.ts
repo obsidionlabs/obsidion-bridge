@@ -16,19 +16,17 @@ export enum BridgeEventType {
   MessageReceived = "message-received",
   Error = "error",
   Disconnected = "disconnected",
-  Reconnected = "reconnected",
 }
 
 /**
  * Bridge event callback types
  */
 export type BridgeEventCallback = {
-  [BridgeEventType.Connected]: () => void
+  [BridgeEventType.Connected]: (reconnection: boolean) => void
   [BridgeEventType.SecureChannelEstablished]: () => void
   [BridgeEventType.MessageReceived]: (message: any) => void
   [BridgeEventType.Error]: (error: string) => void
   [BridgeEventType.Disconnected]: () => void
-  [BridgeEventType.Reconnected]: () => void
 }
 
 /**
@@ -36,7 +34,7 @@ export type BridgeEventCallback = {
  */
 export interface BridgeOptions {
   role: "creator" | "joiner"
-  keyPair?: KeyPair
+  keyPair: KeyPair
   bridgeId?: string
   reconnect?: boolean
   reconnectAttempts?: number
@@ -56,7 +54,7 @@ export class BridgeConnection {
   private origin?: string
   private _bridgeOrigin?: string
   private bridgeId: string
-  private keyPair: KeyPair
+  public readonly keyPair: KeyPair
   private remotePublicKey?: Uint8Array
   private sharedSecret?: Uint8Array
   private websocket?: WebSocketClient
@@ -75,12 +73,11 @@ export class BridgeConnection {
 
   // Event handlers
   private eventListeners: {
-    [BridgeEventType.Connected]: Array<(bridgeId: string) => void>
+    [BridgeEventType.Connected]: Array<(reconnection: boolean) => void>
     [BridgeEventType.SecureChannelEstablished]: Array<() => void>
     [BridgeEventType.MessageReceived]: Array<(message: any) => void>
     [BridgeEventType.Error]: Array<(error: string) => void>
     [BridgeEventType.Disconnected]: Array<() => void>
-    [BridgeEventType.Reconnected]: Array<(bridgeId: string) => void>
   }
 
   /**
@@ -93,10 +90,7 @@ export class BridgeConnection {
     this._bridgeOrigin = options.domain
     this.log = debug(`bridge:${this.role}`)
     this.bridgeId = options.bridgeId || randomBytes(16).toString("hex")
-    this.keyPair = options.keyPair || {
-      privateKey: new Uint8Array(0),
-      publicKey: new Uint8Array(0),
-    }
+    this.keyPair = options.keyPair
     this.reconnect = options.reconnect ?? true
     this._keepalive = options.keepalive ?? true
     this.maxReconnectAttempts = options.reconnectAttempts || DEFAULT_MAX_RECONNECT_ATTEMPTS
@@ -108,8 +102,12 @@ export class BridgeConnection {
       [BridgeEventType.MessageReceived]: [],
       [BridgeEventType.Error]: [],
       [BridgeEventType.Disconnected]: [],
-      [BridgeEventType.Reconnected]: [],
     }
+  }
+
+  public resume(): void {
+    this.log("Resuming bridge session")
+    this.secureChannelEstablished = true
   }
 
   /**
@@ -144,13 +142,15 @@ export class BridgeConnection {
     event: T,
     ...args: Parameters<BridgeEventCallback[T]>
   ): Promise<void> {
-    for (const listener of this.eventListeners[event]) {
-      try {
-        await (listener as (...args: any[]) => Promise<void> | void)(...args)
-      } catch (error) {
-        this.log(`Error in ${event} listener:`, error)
-      }
-    }
+    await Promise.all(
+      this.eventListeners[event].map(async (listener) => {
+        try {
+          await (listener as (...args: any[]) => Promise<void> | void)(...args)
+        } catch (error) {
+          this.log(`Error in ${event} listener:`, error)
+        }
+      }),
+    )
   }
 
   /**
@@ -159,24 +159,21 @@ export class BridgeConnection {
   private setupWebSocketHandlers(websocket: WebSocketClient): void {
     websocket.onopen = async () => {
       this.isConnected = true
+
+      // Set up ping timer
       if (this.pingTimer) clearInterval(this.pingTimer)
       this.pingTimer = setInterval(() => {
-        const message = JSON.stringify({ method: "ping", params: {} })
-
-        if (this.websocket) this.websocket.send(message)
-        // this.websocket.ping(undefined, undefined, (err) => {
-        //   console.log("err?", err)
-        // })
+        if (this.websocket) this.websocket.send(JSON.stringify({ method: "ping", params: {} }))
       }, this.pingInterval)
 
-      // Emit the appropriate event based on whether this is a reconnection
+      // Emit the connected event
       if (this.isReconnecting) {
         this.log("Reconnected to bridge")
         this.resetReconnection()
-        await this.emit(BridgeEventType.Reconnected)
+        await this.emit(BridgeEventType.Connected, true)
       } else {
         this.log("Connected to bridge")
-        await this.emit(BridgeEventType.Connected)
+        await this.emit(BridgeEventType.Connected, false)
       }
     }
 
@@ -271,17 +268,21 @@ export class BridgeConnection {
       const joinerPublicKey = new Uint8Array(Buffer.from(data.params.pubkey, "hex"))
 
       // If secure channel is already established, the remote public key cannot be changed
-      if (this.secureChannelEstablished && this.remotePublicKey !== joinerPublicKey) {
-        this.log("Secure channel already established, ignoring handshake")
-        this.emit(BridgeEventType.Error, "Secure channel already established, ignoring handshake")
-        // TODO: Improve handshake error handling and how it responds / rejects the handshake
-        this.websocket?.send(
-          JSON.stringify({
-            method: "error",
-            params: { message: "Secure channel already established, ignoring handshake" },
-          }),
-        )
-        return
+      if (this.secureChannelEstablished) {
+        if (this.remotePublicKey !== joinerPublicKey) {
+          this.log("Secure channel already established, ignoring handshake")
+          this.emit(BridgeEventType.Error, "Secure channel already established, ignoring handshake")
+          // TODO: Improve handshake error handling and how it responds / rejects the handshake
+          this.websocket?.send(
+            JSON.stringify({
+              method: "error",
+              params: { message: "Secure channel already established, ignoring handshake" },
+            }),
+          )
+          return
+        } else {
+          // TODO: Consider firing event for secure channel already established
+        }
       }
 
       // Set remote public key
@@ -328,9 +329,7 @@ export class BridgeConnection {
    */
   private async handleEncryptedMessage(data: any): Promise<void> {
     try {
-      if (!this.sharedSecret) {
-        throw new Error("Shared secret not available")
-      }
+      if (!this.sharedSecret) throw new Error("Shared secret not available")
 
       const payload = new Uint8Array(Buffer.from(data.params.payload, "base64"))
       const decrypted = await decrypt(payload, this.sharedSecret, this.bridgeId)
@@ -380,7 +379,6 @@ export class BridgeConnection {
 
     this.reconnectTimer = setTimeout(async () => {
       try {
-        // TODO: FIXME
         const reconnectionUrl = await this._getWsConnectionUrl()
         // Create new WebSocket connection
         this.websocket = this.origin
@@ -389,7 +387,6 @@ export class BridgeConnection {
         this.setupWebSocketHandlers(this.websocket)
       } catch (error) {
         this.log("Reconnection failed:", error)
-        // Schedule next reconnection attempt
         await this.handleReconnect()
       }
     }, reconnectIn)
@@ -448,7 +445,7 @@ export class BridgeConnection {
    * Register a callback for when the bridge connects
    * @returns Function to unsubscribe from the event
    */
-  public onConnect(callback: () => void): () => void {
+  public onConnect(callback: (reconnection: boolean) => void): () => void {
     return this.on(BridgeEventType.Connected, callback)
   }
 
@@ -482,25 +479,6 @@ export class BridgeConnection {
    */
   public onDisconnect(callback: () => void): () => void {
     return this.on(BridgeEventType.Disconnected, callback)
-  }
-
-  /**
-   * Register a callback for when the bridge reconnects
-   * @returns Function to unsubscribe from the event
-   */
-  public onReconnect(callback: () => void): () => void {
-    return this.on(BridgeEventType.Reconnected, callback)
-  }
-
-  /**
-   * Initialize the key pair
-   */
-  public async initializeKeyPair(keyPair?: KeyPair): Promise<void> {
-    if (keyPair) {
-      this.keyPair = keyPair
-    } else if (!this.keyPair.privateKey.length) {
-      this.keyPair = await generateECDHKeyPair()
-    }
   }
 
   /**
@@ -618,14 +596,14 @@ export class BridgeConnection {
   }
 
   /**
-   * Close the connection
+   * Close the bridge and clear all event listeners
    */
   public close(): void {
     this.log("Closing the bridge")
     this.intentionalClose = true
 
+    // Close the websocket
     if (this.websocket) {
-      // Close the websocket
       this.websocket.close(1000, "Connection closed by user")
       // Remove all event handlers from the websocket
       this.websocket.onopen = null
@@ -633,6 +611,7 @@ export class BridgeConnection {
       this.websocket.onerror = null
       this.websocket.onclose = null
     }
+    this.emit(BridgeEventType.Disconnected)
 
     this.websocket = undefined
     this.secureChannelEstablished = false
@@ -651,7 +630,6 @@ export class BridgeConnection {
       [BridgeEventType.MessageReceived]: [],
       [BridgeEventType.Error]: [],
       [BridgeEventType.Disconnected]: [],
-      [BridgeEventType.Reconnected]: [],
     }
   }
 }

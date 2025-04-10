@@ -47,9 +47,14 @@ export default function JoinBridgePage() {
       })
 
       // Listen for connection events
-      bridge.onConnect(() => {
-        setMessages((prev) => [...prev, "Connected to bridge"])
+      bridge.onConnect((reconnection: boolean) => {
+        setMessages((prev) => [...prev, `${reconnection ? "Reconnected" : "Connected"} to bridge`])
         setJoinStatus("connected")
+      })
+
+      bridge.onDisconnect(() => {
+        setMessages((prev) => [...prev, "Disconnected from bridge"])
+        setJoinStatus("idle")
       })
 
       bridge.onSecureChannelEstablished(() => {

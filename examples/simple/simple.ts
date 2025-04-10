@@ -16,8 +16,8 @@ async function creatorExample() {
     log("Bridge created. Connection string:", bridge.connectionString)
 
     // Set up event handlers
-    bridge.onConnect(() => {
-      log("Connected to bridge")
+    bridge.onConnect((reconnection: boolean) => {
+      console.log(`${reconnection ? "Reconnected" : "Connected"} to bridge`)
     })
 
     bridge.onSecureChannelEstablished(async () => {
@@ -42,10 +42,6 @@ async function creatorExample() {
       log("Disconnected from bridge")
     })
 
-    bridge.onReconnect(() => {
-      log("Reconnected to bridge")
-    })
-
     // In a real application, you would keep the connection open
     // and close it only when done
     setTimeout(() => {
@@ -68,8 +64,13 @@ async function joinerExample(connectionString: string) {
     const bridge = await Bridge.join(connectionString, { debug: false })
 
     // Set up event handlers
-    bridge.onConnect(() => {
-      log("Connected to bridge")
+    bridge.onConnect((reconnection: boolean) => {
+      log(`${reconnection ? "Reconnected" : "Connected"} to bridge`)
+      if (reconnection) {
+        bridge.sendMessage("greeting", {
+          message: "Hello I reconnected!",
+        })
+      }
     })
 
     bridge.onSecureChannelEstablished(() => {
@@ -91,13 +92,6 @@ async function joinerExample(connectionString: string) {
 
     bridge.onDisconnect(() => {
       log("Disconnected from bridge")
-    })
-
-    bridge.onReconnect(() => {
-      log("Reconnected to bridge")
-      bridge.sendMessage("greeting", {
-        message: "Hello I reconnected!",
-      })
     })
 
     setTimeout(() => {

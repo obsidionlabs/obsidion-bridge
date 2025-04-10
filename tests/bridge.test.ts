@@ -113,7 +113,7 @@ describe("Bridge", () => {
     joiner.websocket!.close()
     expect(joiner.isBridgeConnected()).toBe(false)
 
-    await waitForCallback(joiner.onReconnect)
+    await waitForCallback(joiner.onConnect)
     expect(joiner.isBridgeConnected()).toBe(true)
 
     const creatorOnMessageReceived = waitForCallback(creator.onMessage)

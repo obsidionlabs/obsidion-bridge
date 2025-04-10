@@ -27,8 +27,8 @@ const bridge = await Bridge.create()
 console.log("Bridge connection string:", bridge.connectionString)
 
 // Set up event handlers
-bridge.onConnect(() => {
-  console.log(`Connected to bridge`)
+bridge.onConnect((reconnection: boolean) => {
+  console.log(`${reconnection ? "Reconnected" : "Connected"} to bridge`)
 })
 
 bridge.onSecureChannelEstablished(() => {
@@ -44,10 +44,6 @@ bridge.onMessage((message) => {
 
 bridge.onDisconnect(() => {
   console.log("Disconnected from bridge")
-})
-
-bridge.onReconnect(() => {
-  console.log(`Reconnected to bridge`)
 })
 
 bridge.onError((error) => {
@@ -69,8 +65,8 @@ const cs = "obsidion:02d3ff5e5db7c48c34880bc11e8b457a4b9a6bf2a2f545cf575eb941b08
 const bridge = await Bridge.join(cs)
 
 // Set up event handlers
-bridge.onConnect(() => {
-  console.log(`Connected to bridge`)
+bridge.onConnect((reconnection: boolean) => {
+  console.log(`${reconnection ? "Reconnected" : "Connected"} to bridge`)
 })
 
 bridge.onSecureChannelEstablished(() => {
@@ -86,10 +82,6 @@ bridge.onMessage((message) => {
 
 bridge.onDisconnect(() => {
   console.log("Disconnected from bridge")
-})
-
-bridge.onReconnect(() => {
-  console.log(`Reconnected to bridge`)
 })
 
 bridge.onError((error) => {
