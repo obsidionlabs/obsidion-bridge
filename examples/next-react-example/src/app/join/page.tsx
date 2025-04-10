@@ -3,9 +3,10 @@ import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 // import { Bridge, BridgeInterface } from "@obsidion/bridge"
 import { Bridge, BridgeInterface } from "../../../../.."
+import { restoreBridgeSession, saveBridgeSession } from "../../lib/session"
 import { MessagesPanel } from "../components/MessagesPanel"
-import debug from "debug"
 
+import debug from "debug"
 debug.enable("bridge*")
 
 export default function JoinBridgePage() {
@@ -35,10 +36,26 @@ export default function JoinBridgePage() {
   const handleJoinBridge = async (connectionString: string) => {
     setJoinStatus("joining")
     try {
-      const bridge = await Bridge.join(connectionString)
+      // Restore bridge session data (keypair) if available
+      const savedKeyPair = restoreBridgeSession()
+      // Join bridge (and resume using saved bridge session if available)
+      const bridge = await Bridge.join(connectionString, {
+        keyPair: savedKeyPair,
+        resume: !!savedKeyPair,
+      })
       setBridge(bridge)
-      console.log("Bridge joined successfully", bridge)
       setJoinStatus("connected")
+
+      bridge.onSecureChannelEstablished(() => {
+        setMessages((prev) => [
+          ...prev,
+          "Secure channel established",
+          `Local public key: ${bridge.getPublicKey()}`,
+          `Remote public key: ${bridge.getRemotePublicKey()}`,
+        ])
+        // Save bridge session data (keypair) for future use
+        saveBridgeSession(bridge.getKeyPair())
+      })
 
       // Listen for messages
       bridge.onMessage((message) => {
@@ -55,15 +72,6 @@ export default function JoinBridgePage() {
       bridge.onDisconnect(() => {
         setMessages((prev) => [...prev, "Disconnected from bridge"])
         setJoinStatus("idle")
-      })
-
-      bridge.onSecureChannelEstablished(() => {
-        setMessages((prev) => [
-          ...prev,
-          "Secure channel established",
-          `Local public key: ${bridge.getPublicKey()}`,
-          `Remote public key: ${bridge.getRemotePublicKey()}`,
-        ])
       })
 
       bridge.onError((error) => {

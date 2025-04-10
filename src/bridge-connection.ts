@@ -1,6 +1,6 @@
 import { bytesToHex } from "@noble/ciphers/utils"
 import { randomBytes } from "crypto"
-import { decrypt, encrypt, generateECDHKeyPair, getSharedSecret, KeyPair } from "./encryption"
+import { decrypt, encrypt, getSharedSecret, KeyPair } from "./encryption"
 import { sendEncryptedJsonRpcRequest } from "./json-rpc"
 import { getWebSocketClient, WebSocketClient } from "./websocket"
 import debug from "debug"
@@ -41,6 +41,7 @@ export interface BridgeOptions {
   keepalive?: boolean
   origin?: string
   domain?: string
+  pingInterval?: number
 }
 
 /**
@@ -58,10 +59,9 @@ export class BridgeConnection {
   private remotePublicKey?: Uint8Array
   private sharedSecret?: Uint8Array
   private websocket?: WebSocketClient
-  private connectionUrl?: string
   private secureChannelEstablished = false
   private intentionalClose = false
-  private _keepalive: boolean
+  public readonly keepalive: boolean
   private reconnect: boolean
   private reconnectAttempts = 0
   private maxReconnectAttempts: number
@@ -70,6 +70,7 @@ export class BridgeConnection {
   private pingInterval = 30000
   private isReconnecting = false
   private isConnected = false
+  private resumedSession = false
 
   // Event handlers
   private eventListeners: {
@@ -92,8 +93,9 @@ export class BridgeConnection {
     this.bridgeId = options.bridgeId || randomBytes(16).toString("hex")
     this.keyPair = options.keyPair
     this.reconnect = options.reconnect ?? true
-    this._keepalive = options.keepalive ?? true
+    this.keepalive = options.keepalive ?? true
     this.maxReconnectAttempts = options.reconnectAttempts || DEFAULT_MAX_RECONNECT_ATTEMPTS
+    this.pingInterval = options.pingInterval || 30000
 
     // Initialize event listeners
     this.eventListeners = {
@@ -108,6 +110,7 @@ export class BridgeConnection {
   public resume(): void {
     this.log("Resuming bridge session")
     this.secureChannelEstablished = true
+    this.resumedSession = true
   }
 
   /**
@@ -174,6 +177,11 @@ export class BridgeConnection {
       } else {
         this.log("Connected to bridge")
         await this.emit(BridgeEventType.Connected, false)
+        // Fire the initial secure channel established event if this session was resumed
+        if (this.resumedSession) {
+          this.log("Resumed session, emitting secure channel established event")
+          await this.emit(BridgeEventType.SecureChannelEstablished)
+        }
       }
     }
 
@@ -181,7 +189,6 @@ export class BridgeConnection {
       this.log("Received message:", event.data)
       try {
         const data = JSON.parse(event.data)
-        // console.log("data", data)
         await this.handleWebSocketMessage(data)
       } catch (error) {
         this.log("Error parsing message:", error)
@@ -225,12 +232,19 @@ export class BridgeConnection {
   private async handleWebSocketMessage(data: any): Promise<void> {
     // Handle handshake message (for creator role)
     if (this.role === "creator" && data.method === "handshake") {
+      // TODO: This may be the ideal behaviour rather than responding with an error
       // if (this.secureChannelEstablished) {
       //   this.log("Secure channel already established, ignoring handshake message")
       //   return
       // }
       this.log("Processing handshake message")
       await this.handleHandshake(data)
+    }
+
+    // Respond to ping messages
+    if (data.method === "ping") {
+      this.log("Received ping message, responding with pong")
+      this.websocket?.send(JSON.stringify({ method: "pong", params: {} }))
     }
 
     // Handle encrypted messages
@@ -280,8 +294,6 @@ export class BridgeConnection {
             }),
           )
           return
-        } else {
-          // TODO: Consider firing event for secure channel already established
         }
       }
 
@@ -511,14 +523,16 @@ export class BridgeConnection {
 
   /**
    * Get the WebSocket connection URL for a joiner
+   * NOTE: If the pubkey param is provided in the WS connection URI,
+   *       the bridge server will automatically send a handshake on connect
    * @returns The WebSocket connection URL
    */
   public async _getWsConnectionUrl(): Promise<string> {
     if (this.role === "creator") {
-      return this.connectionUrl!
+      return `wss://bridge.zkpassport.id?topic=${this.getBridgeId()}`
     } else {
-      const greeting = await this.createEncryptedGreeting()
       if (!this.isSecureChannelEstablished()) {
+        const greeting = await this.createEncryptedGreeting()
         return `wss://bridge.zkpassport.id?topic=${this.getBridgeId()}&pubkey=${this.getPublicKey()}&greeting=${greeting}`
       } else {
         return `wss://bridge.zkpassport.id?topic=${this.getBridgeId()}`
@@ -557,13 +571,12 @@ export class BridgeConnection {
     return this.websocket
   }
 
+  /**
+   * Get the bridge origin (the origin of the creator)
+   */
   public get bridgeOrigin(): string {
     if (this.role === "creator") return this.origin!
     else return this._bridgeOrigin!
-  }
-
-  public get keepalive(): boolean {
-    return this._keepalive
   }
 
   /**
@@ -582,7 +595,6 @@ export class BridgeConnection {
    */
   public async connect(url: string): Promise<void> {
     try {
-      this.connectionUrl = url
       this.log("Connecting to bridge", url)
       // Create WebSocket connection to the bridge
       const websocket = this.origin ? getWebSocketClient(url, this.origin) : getWebSocketClient(url)

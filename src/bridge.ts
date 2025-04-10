@@ -17,6 +17,7 @@ export interface CreateOptions {
   reconnect?: boolean
   keepalive?: boolean
   debug?: boolean
+  pingInterval?: number
 }
 
 /**
@@ -28,6 +29,7 @@ export interface JoinOptions {
   reconnect?: boolean
   keepalive?: boolean
   debug?: boolean
+  pingInterval?: number
 }
 
 /**
@@ -99,18 +101,19 @@ export class Bridge {
       keyPair,
       reconnect: options.reconnect,
       keepalive: options.keepalive,
+      pingInterval: options.pingInterval,
     })
-
-    // Connect to the bridge service if autoconnect option is true (default behaviour)
-    if (autoconnect) {
-      await connection.connect(`wss://bridge.zkpassport.id?topic=${bridgeId}`)
-    }
 
     // Resume existing bridge session if requested
     if (options.resume) {
       // Set remote public key
       connection.setRemotePublicKey(options.remotePublicKey!)
       connection.resume()
+    }
+
+    // Connect to the bridge service if autoconnect option is true (default behaviour)
+    if (options.resume || autoconnect) {
+      await connection.connect(await connection._getWsConnectionUrl())
     }
 
     // Return functional interface
@@ -165,6 +168,7 @@ export class Bridge {
       keyPair,
       reconnect: options.reconnect,
       keepalive: options.keepalive,
+      pingInterval: options.pingInterval,
     })
 
     // Set remote public key
@@ -173,11 +177,11 @@ export class Bridge {
     // Compute shared secret
     await connection.computeSharedSecret()
 
-    // Connect to the bridge service
-    await connection.connect(await connection._getWsConnectionUrl())
-
     // Resume existing bridge session if requested
     if (options.resume) connection.resume()
+
+    // Connect to the bridge service
+    await connection.connect(await connection._getWsConnectionUrl())
 
     // Return functional interface
     return {
