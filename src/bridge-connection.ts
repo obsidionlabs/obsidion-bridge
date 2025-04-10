@@ -243,7 +243,6 @@ export class BridgeConnection {
       // For joiner role, verify origin from creator message matches expected origin
       if (this.role === "joiner" && this._bridgeOrigin) {
         const parsedOrigin = data.origin ? parseOriginHeader(data.origin) : undefined
-        this.log("parsedOrigin:", parsedOrigin)
         if (parsedOrigin !== this._bridgeOrigin) {
           this.log(
             `WARNING: Origin differs from origin in connection string. Expected ${this._bridgeOrigin} but got ${parsedOrigin}`,
@@ -622,16 +621,38 @@ export class BridgeConnection {
    * Close the connection
    */
   public close(): void {
-    this.log("Closing connection")
+    this.log("Closing the bridge")
     this.intentionalClose = true
 
     if (this.websocket) {
-      this.websocket.close()
-      this.websocket = undefined
+      // Close the websocket
+      this.websocket.close(1000, "Connection closed by user")
+      // Remove all event handlers from the websocket
+      this.websocket.onopen = null
+      this.websocket.onmessage = null
+      this.websocket.onerror = null
+      this.websocket.onclose = null
     }
 
+    this.websocket = undefined
     this.secureChannelEstablished = false
     this.sharedSecret = undefined
+    this.remotePublicKey = undefined
+
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = undefined
+    if (this.pingTimer) clearInterval(this.pingTimer)
+    this.pingTimer = undefined
+
+    // Clear all event listeners
+    this.eventListeners = {
+      [BridgeEventType.Connected]: [],
+      [BridgeEventType.SecureChannelEstablished]: [],
+      [BridgeEventType.MessageReceived]: [],
+      [BridgeEventType.Error]: [],
+      [BridgeEventType.Disconnected]: [],
+      [BridgeEventType.Reconnected]: [],
+    }
   }
 }
 
