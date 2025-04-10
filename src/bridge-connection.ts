@@ -41,6 +41,7 @@ export interface BridgeOptions {
   reconnect?: boolean
   reconnectAttempts?: number
   keepalive?: boolean
+  resume?: boolean
   origin?: string
   domain?: string
 }
@@ -99,6 +100,7 @@ export class BridgeConnection {
     }
     this.reconnect = options.reconnect ?? true
     this._keepalive = options.keepalive ?? true
+    this.secureChannelEstablished = options.resume ?? false
     this.maxReconnectAttempts = options.reconnectAttempts || DEFAULT_MAX_RECONNECT_ATTEMPTS
 
     // Initialize event listeners

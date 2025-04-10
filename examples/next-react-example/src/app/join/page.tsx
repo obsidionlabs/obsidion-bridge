@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation"
 import { Bridge } from "../../../../../dist/esm"
 import { MessagesPanel } from "../components/MessagesPanel"
 import debug from "debug"
+import { getConnectionState, isRefreshed, saveRemotePublicKey } from "@/utils"
 
 debug.enable("bridge*")
 
@@ -21,6 +22,7 @@ export default function JoinBridgePage() {
   useEffect(() => {
     // Get URI from query parameters on page load
     const uriParam = searchParams.get("uri")
+    console.log("uriParam", uriParam)
     if (uriParam) {
       setConnectionString(uriParam)
       console.log("Connection string:", uriParam)
@@ -31,11 +33,20 @@ export default function JoinBridgePage() {
   const handleJoinBridge = async (connectionString: string) => {
     setJoinStatus("joining")
     try {
-      const bridge = await Bridge.join(connectionString)
+      const connectionState = await getConnectionState("joiner")
+      const bridge = await Bridge.join(connectionString, {
+        keyPair: connectionState.keyPair,
+        resume: connectionState.connected && isRefreshed(),
+      })
       setBridge(bridge)
       console.log("Bridge joined successfully", bridge)
       setJoinStatus("connected")
 
+      // Save remote public key. if not found, fetch it from local storage
+      let remotePublicKey = bridge.getRemotePublicKey()
+      if (remotePublicKey) {
+        await saveRemotePublicKey(remotePublicKey, "joiner")
+      }
       // Listen for messages
       bridge.onMessage((message) => {
         setMessages((prev) => [...prev, `Received: ${JSON.stringify(message)}`])
@@ -49,6 +60,7 @@ export default function JoinBridgePage() {
       })
 
       bridge.onSecureChannelEstablished(() => {
+        console.log("Secure channel established")
         setMessages((prev) => [
           ...prev,
           "Secure channel established",

@@ -4,6 +4,8 @@ import { useEffect, useState } from "react"
 import { Bridge } from "../../../../../dist/esm"
 import { MessagesPanel } from "../components/MessagesPanel"
 import debug from "debug"
+import { getConnectionState, isRefreshed, saveRemotePublicKey } from "@/utils"
+import { hexToBytes } from "@noble/ciphers/utils"
 
 debug.enable("bridge*")
 
@@ -17,10 +19,24 @@ export default function CreateBridgePage() {
 
   useEffect(() => {
     const createBridge = async () => {
-      const bridge = await Bridge.create()
+      const connectionState = await getConnectionState("creator")
+      const bridge = await Bridge.create({
+        keyPair: connectionState.keyPair,
+        // TODO: this might be too optimistic
+        // even if remote pubkey is found in local storage ( connected = true ) and isRefreshed() returns true,
+        // the actual connection might not be established
+        resume: connectionState.connected && isRefreshed(),
+      })
+
       setBridge(bridge)
       setConnectionString(bridge.connectionString)
       console.log("Bridge created. Connection string:", bridge.connectionString)
+
+      if (connectionState.remotePublicKey) {
+        console.log("Setting remote public key:", connectionState.remotePublicKey)
+        bridge.setRemotePublicKey(hexToBytes(connectionState.remotePublicKey))
+        await bridge.computeSharedSecret()
+      }
 
       // Listen for messages
       bridge.onMessage((message) => {
@@ -34,12 +50,14 @@ export default function CreateBridgePage() {
       })
 
       bridge.onSecureChannelEstablished(() => {
+        console.log("Secure channel established")
         setMessages((prev) => [
           ...prev,
           "Secure channel established",
           `Remote public key: ${bridge.getRemotePublicKey()}`,
           `Local public key: ${bridge.getPublicKey()}`,
         ])
+        saveRemotePublicKey(bridge.getRemotePublicKey(), "creator")
       })
 
       bridge.onError((error) => {

@@ -14,6 +14,7 @@ export interface CreateOptions {
   autoconnect?: boolean
   reconnect?: boolean
   keepalive?: boolean
+  resume?: boolean
   debug?: boolean
 }
 
@@ -24,6 +25,7 @@ export interface JoinOptions {
   keyPair?: KeyPair
   reconnect?: boolean
   keepalive?: boolean
+  resume?: boolean
   debug?: boolean
 }
 
@@ -46,6 +48,8 @@ export interface BridgeInterface {
   origin: string
   getPublicKey: () => string
   getRemotePublicKey: () => string
+  setRemotePublicKey: (publicKey: Uint8Array) => void
+  computeSharedSecret: () => Promise<void>
   close: () => void
 }
 
@@ -88,6 +92,7 @@ export class Bridge {
       keyPair,
       reconnect: options.reconnect,
       keepalive: options.keepalive,
+      resume: options.resume,
     })
 
     // Connect to the bridge service if autoconnect option is true (default behaviour)
@@ -112,6 +117,8 @@ export class Bridge {
       origin: connection.bridgeOrigin,
       getPublicKey: () => connection.getPublicKey(),
       getRemotePublicKey: () => connection.getRemotePublicKey(),
+      setRemotePublicKey: (publicKey: Uint8Array) => connection.setRemotePublicKey(publicKey),
+      computeSharedSecret: () => connection.computeSharedSecret(),
       close: () => connection.close(),
     }
   }
@@ -139,6 +146,7 @@ export class Bridge {
       keyPair: options.keyPair,
       reconnect: options.reconnect,
       keepalive: options.keepalive,
+      resume: options.resume,
     })
 
     // Generate key pair
@@ -170,6 +178,8 @@ export class Bridge {
       origin: connection.bridgeOrigin,
       getPublicKey: () => connection.getPublicKey(),
       getRemotePublicKey: () => connection.getRemotePublicKey(),
+      setRemotePublicKey: (publicKey: Uint8Array) => connection.setRemotePublicKey(publicKey),
+      computeSharedSecret: () => connection.computeSharedSecret(),
       close: () => connection.close(),
     }
   }
