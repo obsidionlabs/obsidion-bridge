@@ -3,4 +3,4 @@ export { Bridge } from "./bridge"
 
 // Export types
 export type { BridgeInterface, CreateOptions, JoinOptions } from "./bridge"
-export type { KeyPair } from "./encryption"
+export { generateECDHKeyPair, type KeyPair } from "./encryption"

@@ -598,7 +598,7 @@ export class BridgeConnection {
     if (this.role === "creator") {
       return `obsidion:${this.getPublicKey()}?d=${this.origin!}`
     } else {
-      return `obsidion:${this.getBridgeId()}?d=${this.origin!}`
+      return `obsidion:${this.getBridgeId()}?d=${this.bridgeOrigin!}`
     }
   }
 
