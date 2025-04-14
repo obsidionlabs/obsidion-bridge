@@ -90,15 +90,15 @@ describe("Bridge", () => {
 
     await waitForCallback(joiner.onSecureChannelEstablished)
 
-    const creatorOnMessageReceived = waitForCallback(creator.onMessage)
-    const joinerOnMessageReceived = waitForCallback(joiner.onMessage)
+    const creatorOnMessage = waitForCallback(creator.onSecureMessage)
+    const joinerOnMessage = waitForCallback(joiner.onSecureMessage)
 
     creator.sendMessage("hello, world?", {})
-    const message1 = await joinerOnMessageReceived
+    const message1 = await joinerOnMessage
     expect(message1).toEqual({ method: "hello, world?", params: {} })
 
     joiner.sendMessage("hello, world!", {})
-    const message2 = await creatorOnMessageReceived
+    const message2 = await creatorOnMessage
     expect(message2).toEqual({ method: "hello, world!", params: {} })
   })
 
@@ -116,9 +116,9 @@ describe("Bridge", () => {
     await waitForCallback(joiner.onConnect)
     expect(joiner.isBridgeConnected()).toBe(true)
 
-    const creatorOnMessageReceived = waitForCallback(creator.onMessage)
+    const creatorOnMessage = waitForCallback(creator.onSecureMessage)
     joiner.sendMessage("after reconnect", {})
-    const message = await creatorOnMessageReceived
+    const message = await creatorOnMessage
     expect(message).toEqual({ method: "after reconnect", params: {} })
   })
 
@@ -165,9 +165,9 @@ describe("Bridge", () => {
     expect(resumedJoiner.isSecureChannelEstablished()).toBe(true)
 
     // Verify message exchange after resuming
-    const creatorOnMessageReceived = waitForCallback(creator.onMessage)
+    const creatorOnMessage = waitForCallback(creator.onSecureMessage)
     resumedJoiner.sendMessage("resumed joiner", {})
-    const message = await creatorOnMessageReceived
+    const message = await creatorOnMessage
     expect(message).toEqual({ method: "resumed joiner", params: {} })
   })
 
@@ -188,9 +188,9 @@ describe("Bridge", () => {
     expect(resumedCreator.isSecureChannelEstablished()).toBe(true)
 
     // Verify message exchange after resuming
-    const joinerOnMessageReceived = waitForCallback(joiner.onMessage)
+    const joinerOnMessage = waitForCallback(joiner.onSecureMessage)
     resumedCreator.sendMessage("resumed creator", {})
-    const message = await joinerOnMessageReceived
+    const message = await joinerOnMessage
     expect(message).toEqual({ method: "resumed creator", params: {} })
   })
 })

@@ -38,7 +38,7 @@ bridge.onSecureChannelEstablished(() => {
   bridge.sendSecureMessage("greeting", { message: "Hello from creator!" })
 })
 
-bridge.onMessage((message) => {
+bridge.onSecureMessage((message) => {
   console.log("Received message:", message)
 })
 
@@ -76,7 +76,7 @@ bridge.onSecureChannelEstablished(() => {
   bridge.sendSecureMessage("greeting", { message: "Hello from joiner!" })
 })
 
-bridge.onMessage((message) => {
+bridge.onSecureMessage((message) => {
   console.log("Received message:", message)
 })
 

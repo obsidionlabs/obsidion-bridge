@@ -40,7 +40,7 @@ export interface BridgeInterface {
   connection: BridgeConnection
   onConnect: (callback: (reconnection: boolean) => void) => () => void
   onSecureChannelEstablished: (callback: () => void) => () => void
-  onMessage: (callback: (message: any) => void) => () => void
+  onSecureMessage: (callback: (message: any) => void) => () => void
   onError: (callback: (error: string) => void) => () => void
   onDisconnect: (callback: () => void) => () => void
   isBridgeConnected: () => boolean
@@ -124,7 +124,7 @@ export class Bridge {
       connection: connection,
       onConnect: (callback) => connection.onConnect(callback),
       onSecureChannelEstablished: (callback) => connection.onSecureChannelEstablished(callback),
-      onMessage: (callback) => connection.onMessage(callback),
+      onSecureMessage: (callback) => connection.onSecureMessage(callback),
       onError: (callback) => connection.onError(callback),
       onDisconnect: (callback) => connection.onDisconnect(callback),
       isBridgeConnected: () => connection.isBridgeConnected(),
@@ -191,7 +191,7 @@ export class Bridge {
       connection: connection,
       onConnect: (callback) => connection.onConnect(callback),
       onSecureChannelEstablished: (callback) => connection.onSecureChannelEstablished(callback),
-      onMessage: (callback) => connection.onMessage(callback),
+      onSecureMessage: (callback) => connection.onSecureMessage(callback),
       onError: (callback) => connection.onError(callback),
       onDisconnect: (callback) => connection.onDisconnect(callback),
       isBridgeConnected: () => connection.isBridgeConnected(),

@@ -30,7 +30,7 @@ async function creatorExample() {
       })
     })
 
-    bridge.onMessage((message) => {
+    bridge.onSecureMessage((message) => {
       log("Received message from joiner:", message)
     })
 
@@ -82,7 +82,7 @@ async function joinerExample(connectionString: string) {
       })
     })
 
-    bridge.onMessage((message) => {
+    bridge.onSecureMessage((message) => {
       log("Received message from creator:", message)
     })
 

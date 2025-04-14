@@ -471,7 +471,7 @@ export class BridgeConnection {
    * Register a callback for when a message is received
    * @returns Function to unsubscribe from the event
    */
-  public onMessage(callback: (message: any) => void): () => void {
+  public onSecureMessage(callback: (message: any) => void): () => void {
     return this.on(BridgeEventType.MessageReceived, callback)
   }
 

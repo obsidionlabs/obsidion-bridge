@@ -47,7 +47,7 @@ export default function CreateBridgePage() {
       })
 
       // Listen for messages
-      bridge.onMessage((message) => {
+      bridge.onSecureMessage((message) => {
         setMessages((prev) => [...prev, `Received: ${JSON.stringify(message)}`])
         console.log("Message received:", message)
       })
