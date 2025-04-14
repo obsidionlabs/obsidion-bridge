@@ -37,11 +37,11 @@ export default function JoinBridgePage() {
     setJoinStatus("joining")
     try {
       // Restore bridge session data (keypair) if available
-      const savedKeyPair = restoreBridgeSession()
+      const savedBridgeSession = restoreBridgeSession()
       // Join bridge (and resume using saved bridge session if available)
       const bridge = await Bridge.join(connectionString, {
-        keyPair: savedKeyPair,
-        resume: !!savedKeyPair,
+        keyPair: savedBridgeSession?.keyPair,
+        resume: !!savedBridgeSession,
       })
       setBridge(bridge)
       setJoinStatus("connected")
@@ -53,7 +53,7 @@ export default function JoinBridgePage() {
           `Local public key: ${bridge.getPublicKey()}`,
           `Remote public key: ${bridge.getRemotePublicKey()}`,
         ])
-        // Save bridge session data (keypair) for future use
+        // Save bridge session data (keypair) for resuming
         saveBridgeSession(bridge.getKeyPair())
       })
 

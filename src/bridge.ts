@@ -108,6 +108,8 @@ export class Bridge {
     if (options.resume) {
       // Set remote public key
       connection.setRemotePublicKey(options.remotePublicKey!)
+      // Compute shared secret
+      await connection.computeSharedSecret()
       connection.resume()
     }
 

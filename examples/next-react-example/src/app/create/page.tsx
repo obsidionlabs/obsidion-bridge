@@ -4,6 +4,8 @@ import { useEffect, useState } from "react"
 import { Bridge, BridgeInterface } from "../../../../.."
 import { MessagesPanel } from "../components/MessagesPanel"
 import debug from "debug"
+import { restoreBridgeSession, saveBridgeSession } from "@/lib/session"
+import { hexToBytes } from "@noble/ciphers/utils"
 
 debug.enable("bridge*")
 
@@ -21,10 +23,28 @@ export default function CreateBridgePage() {
 
   useEffect(() => {
     const createBridge = async () => {
-      const bridge = await Bridge.create()
+      // Restore bridge session if available
+      const savedBridgeSession = restoreBridgeSession()
+      // Create bridge (and resume using saved bridge session if available)
+      const bridge = await Bridge.create({
+        keyPair: savedBridgeSession?.keyPair,
+        remotePublicKey: savedBridgeSession?.remotePublicKey,
+        resume: !!savedBridgeSession,
+      })
       setBridge(bridge)
       setConnectionString(bridge.connectionString)
       console.log("Bridge created. Connection string:", bridge.connectionString)
+
+      bridge.onSecureChannelEstablished(() => {
+        setMessages((prev) => [
+          ...prev,
+          "Secure channel established",
+          `Remote public key: ${bridge.getRemotePublicKey()}`,
+          `Local public key: ${bridge.getPublicKey()}`,
+        ])
+        // Save bridge session data for resuming
+        saveBridgeSession(bridge.getKeyPair(), hexToBytes(bridge.getRemotePublicKey()))
+      })
 
       // Listen for messages
       bridge.onMessage((message) => {
@@ -37,13 +57,8 @@ export default function CreateBridgePage() {
         setMessages((prev) => [...prev, "Connected to bridge"])
       })
 
-      bridge.onSecureChannelEstablished(() => {
-        setMessages((prev) => [
-          ...prev,
-          "Secure channel established",
-          `Remote public key: ${bridge.getRemotePublicKey()}`,
-          `Local public key: ${bridge.getPublicKey()}`,
-        ])
+      bridge.onDisconnect(() => {
+        setMessages((prev) => [...prev, "Disconnected from bridge"])
       })
 
       bridge.onError((error) => {

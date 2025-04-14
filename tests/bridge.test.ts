@@ -148,4 +148,49 @@ describe("Bridge", () => {
     expect(joiner2.connection.reconnect).toBe(false)
     expect(joiner2.connection.keepalive).toBe(false)
   })
+
+  test("should correctly resume as joiner", async () => {
+    const creator = await Bridge.create()
+    const joiner = await Bridge.join(creator.connectionString)
+
+    await waitForCallback(joiner.onSecureChannelEstablished)
+    expect(joiner.isSecureChannelEstablished()).toBe(true)
+
+    // Create a new joiner resuming the session
+    const resumedJoiner = await Bridge.join(creator.connectionString, {
+      resume: true,
+      keyPair: joiner.getKeyPair(),
+    })
+    await waitForCallback(resumedJoiner.onSecureChannelEstablished)
+    expect(resumedJoiner.isSecureChannelEstablished()).toBe(true)
+
+    // Verify message exchange after resuming
+    const creatorOnMessageReceived = waitForCallback(creator.onMessage)
+    resumedJoiner.sendMessage("resumed joiner", {})
+    const message = await creatorOnMessageReceived
+    expect(message).toEqual({ method: "resumed joiner", params: {} })
+  })
+
+  test("should correctly resume as creator", async () => {
+    const creator = await Bridge.create()
+    const joiner = await Bridge.join(creator.connectionString)
+
+    await waitForCallback(joiner.onSecureChannelEstablished)
+    expect(joiner.isSecureChannelEstablished()).toBe(true)
+
+    // Create a new creator resuming the session
+    const resumedCreator = await Bridge.create({
+      resume: true,
+      keyPair: creator.getKeyPair(),
+      remotePublicKey: hexToBytes(creator.getRemotePublicKey()),
+    })
+    await waitForCallback(resumedCreator.onSecureChannelEstablished)
+    expect(resumedCreator.isSecureChannelEstablished()).toBe(true)
+
+    // Verify message exchange after resuming
+    const joinerOnMessageReceived = waitForCallback(joiner.onMessage)
+    resumedCreator.sendMessage("resumed creator", {})
+    const message = await joinerOnMessageReceived
+    expect(message).toEqual({ method: "resumed creator", params: {} })
+  })
 })

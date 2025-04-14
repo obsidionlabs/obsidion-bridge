@@ -276,11 +276,9 @@ export class BridgeConnection {
    */
   private async handleHandshake(data: any): Promise<void> {
     this.log("Received handshake:", data)
-
     try {
       // Get joiner public key
       const joinerPublicKey = new Uint8Array(Buffer.from(data.params.pubkey, "hex"))
-
       // If secure channel is already established, the remote public key cannot be changed
       if (this.secureChannelEstablished) {
         if (this.remotePublicKey !== joinerPublicKey) {

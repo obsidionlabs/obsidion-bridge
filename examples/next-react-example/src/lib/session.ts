@@ -6,25 +6,28 @@ const BRIDGE_SESSION_STORAGE_KEY = "obsidion-bridge-session"
 /**
  * Save bridge session to session storage
  */
-export function saveBridgeSession(keyPair: KeyPair): void {
+export function saveBridgeSession(keyPair: KeyPair, remotePublicKey?: Uint8Array): void {
   try {
     sessionStorage.setItem(
       BRIDGE_SESSION_STORAGE_KEY,
       JSON.stringify({
         publicKey: Array.from(keyPair.publicKey),
         privateKey: Array.from(keyPair.privateKey),
+        ...(remotePublicKey ? { remotePublicKey: Array.from(remotePublicKey) } : {}),
       }),
     )
-    console.log("Saved keyPair to sessionStorage")
+    console.log("Saved bridge session to session storage")
   } catch (error) {
-    console.error("Failed to save keyPair to sessionStorage:", error)
+    console.error("Failed to save bridge session to session storage:", error)
   }
 }
 
 /**
  * Restore bridge session from session storage
  */
-export function restoreBridgeSession(): KeyPair | undefined {
+export function restoreBridgeSession():
+  | { keyPair: KeyPair; remotePublicKey?: Uint8Array }
+  | undefined {
   try {
     const keyPairJson = sessionStorage.getItem(BRIDGE_SESSION_STORAGE_KEY)
     if (keyPairJson) {
@@ -33,11 +36,16 @@ export function restoreBridgeSession(): KeyPair | undefined {
         publicKey: new Uint8Array(parsedSavedKeyPair.publicKey),
         privateKey: new Uint8Array(parsedSavedKeyPair.privateKey),
       }
-      console.log("Found existing keyPair in sessionStorage")
-      return keyPair
+      console.log("Found existing bridge session in session storage")
+      return {
+        keyPair,
+        ...(parsedSavedKeyPair.remotePublicKey
+          ? { remotePublicKey: new Uint8Array(parsedSavedKeyPair.remotePublicKey) }
+          : {}),
+      }
     }
   } catch (error) {
-    console.error("Failed to retrieve keyPair from sessionStorage:", error)
+    console.error("Failed to retrieve bridge session from session storage:", error)
   }
   return
 }
@@ -47,4 +55,5 @@ export function restoreBridgeSession(): KeyPair | undefined {
  */
 export function clearBridgeSession(): void {
   sessionStorage.removeItem(BRIDGE_SESSION_STORAGE_KEY)
+  console.log("Cleared bridge session from session storage")
 }
