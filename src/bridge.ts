@@ -220,4 +220,12 @@ export class Bridge {
     if (domain !== "nodejs" && !domain.startsWith("http")) domain = "https://" + domain
     return { domain, pubkey }
   }
+
+  /**
+   * Generate a new ECDH key pair
+   * @returns A promise that resolves to a key pair
+   */
+  public static async generateKeyPair(): Promise<KeyPair> {
+    return generateECDHKeyPair()
+  }
 }
