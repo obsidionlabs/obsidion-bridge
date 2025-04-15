@@ -65,9 +65,10 @@ describe("Bridge", () => {
     const creator = await Bridge.create({ origin: "https://localhost" })
     const joiner = await Bridge.join(creator.connectionString)
 
-    expect(creator.connectionString).toContain("d=https://localhost")
     expect(creator.origin).toBe("https://localhost")
+    expect(creator.connectionString).toContain("d=https://localhost")
     expect(joiner.origin).toBe("https://localhost")
+    expect(joiner.connectionString).toContain("d=https://localhost")
   })
 
   test("should fail to verify incorrect origin", async () => {
