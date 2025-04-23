@@ -6,39 +6,46 @@
   "type": "module",
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
-  "types": "./dist/esm/index.d.ts",
+  "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ],
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/esm/index.js",
       "require": "./dist/cjs/index.js",
-      "types": "./dist/esm/index.d.ts"
+      "default": "./dist/esm/index.js"
     }
   },
   "scripts": {
     "test": "bun test tests/*.test.ts",
     "coverage": "bun test tests/*.test.ts --coverage",
-    "lint": "eslint src tests examples --ext .ts",
+    "check": "tsc --noEmit && eslint src tests examples --ext .ts",
     "format": "prettier . --write",
-    "build": "rimraf ./dist && bun run build:cjs && bun run build:esm",
-    "build:cjs": "tsc -p tsconfig.cjs.json",
-    "build:esm": "tsc -p tsconfig.esm.json",
-    "build:watch": "rimraf ./dist && tsc -p tsconfig.esm.json --watch",
-    "prepublishOnly": "bun run lint && bun run test && bun run build"
+    "build": "rimraf ./dist && bun run build:bundle && bun run build:types",
+    "build:bundle": "node scripts/esbuild.mjs",
+    "build:types": "node scripts/gen-types.mjs",
+    "build:watch": "rimraf ./dist && concurrently \"node scripts/esbuild.mjs --watch\" \"node scripts/gen-types.mjs --watch\"",
+    "publish": "bun publish --access public",
+    "prepublishOnly": "bun run format && bun run check && bun run test && bun run build"
   },
   "dependencies": {
     "@noble/ciphers": "^1.2.1",
-    "@noble/secp256k1": "^2.2.3"
+    "@noble/secp256k1": "^2.2.3",
+    "debug": "^4.3.4",
+    "ws": "^8.16.0"
   },
   "devDependencies": {
     "@types/bun": "^1.2.2",
     "@types/debug": "^4.1.12",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.13.1",
+    "@types/ws": "^8.5.10",
     "@typescript-eslint/eslint-plugin": "^8.23.0",
     "@typescript-eslint/parser": "^8.23.0",
+    "concurrently": "^8.2.2",
+    "esbuild": "^0.25.2",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.3",
