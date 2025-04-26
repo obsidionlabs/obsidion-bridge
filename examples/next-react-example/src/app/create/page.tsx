@@ -47,7 +47,7 @@ export default function CreateBridgePage() {
       })
 
       // Listen for messages
-      bridge.onSecureMessage((message) => {
+      bridge.onSecureMessage((message: unknown) => {
         setMessages((prev) => [...prev, `Received: ${JSON.stringify(message)}`])
         console.log("Message received:", message)
       })
@@ -61,7 +61,7 @@ export default function CreateBridgePage() {
         setMessages((prev) => [...prev, "Disconnected from bridge"])
       })
 
-      bridge.onError((error) => {
+      bridge.onError((error: string) => {
         setMessages((prev) => [...prev, `Error: ${error}`])
       })
     }

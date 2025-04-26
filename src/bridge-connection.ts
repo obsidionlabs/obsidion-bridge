@@ -1,5 +1,5 @@
 import { bytesToHex } from "@noble/ciphers/utils"
-import { randomBytes } from "crypto"
+import { getRandomBytes } from "./crypto"
 import { decrypt, encrypt, getSharedSecret, KeyPair } from "./encryption"
 import { sendEncryptedJsonRpcRequest } from "./json-rpc"
 import { getWebSocketClient, WebSocketClient } from "./websocket"
@@ -90,7 +90,7 @@ export class BridgeConnection {
     this.origin = options.origin
     this._bridgeOrigin = options.domain
     this.log = debug(`bridge:${this.role}`)
-    this.bridgeId = options.bridgeId || randomBytes(16).toString("hex")
+    this.bridgeId = options.bridgeId || Buffer.from(getRandomBytes(16)).toString("hex")
     this.keyPair = options.keyPair
     this.reconnect = options.reconnect ?? true
     this.keepalive = options.keepalive ?? true
@@ -391,9 +391,9 @@ export class BridgeConnection {
       try {
         const reconnectionUrl = await this._getWsConnectionUrl()
         // Create new WebSocket connection
-        this.websocket = this.origin
+        this.websocket = await (this.origin
           ? getWebSocketClient(reconnectionUrl, this.origin)
-          : getWebSocketClient(reconnectionUrl)
+          : getWebSocketClient(reconnectionUrl))
         this.setupWebSocketHandlers(this.websocket)
       } catch (error) {
         this.log("Reconnection failed:", error)
@@ -595,7 +595,9 @@ export class BridgeConnection {
     try {
       this.log("Connecting to bridge", url)
       // Create WebSocket connection to the bridge
-      const websocket = this.origin ? getWebSocketClient(url, this.origin) : getWebSocketClient(url)
+      const websocket = await (this.origin
+        ? getWebSocketClient(url, this.origin)
+        : getWebSocketClient(url))
       this.websocket = websocket
       this.setupWebSocketHandlers(websocket)
     } catch (error) {

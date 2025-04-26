@@ -1,4 +1,4 @@
-import { randomBytes } from "crypto"
+import { getRandomBytes } from "./crypto"
 import { encrypt } from "./encryption"
 import { WebSocketClient } from "./websocket"
 import debug from "debug"
@@ -21,9 +21,14 @@ export interface JsonRpcResponse {
 }
 
 export function createJsonRpcRequest(method: string, params: any): JsonRpcRequest {
+  const randBytes = getRandomBytes(16)
+  const id = Array.from(randBytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+
   return {
     jsonrpc: "2.0",
-    id: randomBytes(16).toString("hex"),
+    id,
     method,
     params,
   }

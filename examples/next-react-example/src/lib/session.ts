@@ -1,4 +1,4 @@
-import { KeyPair } from "../../../../dist/esm/encryption"
+import { KeyPair } from "../../../.."
 
 // Session storage key for bridge session data
 const BRIDGE_SESSION_STORAGE_KEY = "obsidion-bridge-session"

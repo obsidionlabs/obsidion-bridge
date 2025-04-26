@@ -11,10 +11,10 @@ async function runBuild() {
       bundle: true,
       minify: false,
       sourcemap: true,
-      platform: "node",
+      platform: "browser",
       format: "esm",
       target: ["es2020"],
-      external: ["@noble/ciphers", "@noble/secp256k1", "debug", "ws", "crypto"],
+      external: ["@noble/ciphers", "@noble/secp256k1", "debug", "ws"],
     })
     // Build CJS version
     await build({
@@ -26,7 +26,7 @@ async function runBuild() {
       platform: "node",
       format: "cjs",
       target: ["es2020"],
-      external: ["@noble/ciphers", "@noble/secp256k1", "debug", "ws", "crypto"],
+      external: ["@noble/ciphers", "@noble/secp256k1", "debug", "ws"],
     })
     console.log("Build completed successfully")
   } catch (error) {
