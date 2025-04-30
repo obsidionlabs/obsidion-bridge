@@ -15,6 +15,7 @@ export enum BridgeEventType {
   Connected = "connected",
   SecureChannelEstablished = "secure-channel-established",
   MessageReceived = "message-received",
+  ChunkRecieved = "chunk-received",
   Error = "error",
   Disconnected = "disconnected",
 }
@@ -26,6 +27,7 @@ export type BridgeEventCallback = {
   [BridgeEventType.Connected]: (reconnection: boolean) => void
   [BridgeEventType.SecureChannelEstablished]: () => void
   [BridgeEventType.MessageReceived]: (message: any) => void
+  [BridgeEventType.ChunkRecieved]: (message: any) => void
   [BridgeEventType.Error]: (error: string) => void
   [BridgeEventType.Disconnected]: () => void
 }
@@ -78,15 +80,20 @@ export class BridgeConnection {
     [BridgeEventType.Connected]: Array<(reconnection: boolean) => void>
     [BridgeEventType.SecureChannelEstablished]: Array<() => void>
     [BridgeEventType.MessageReceived]: Array<(message: any) => void>
+    [BridgeEventType.ChunkRecieved]: Array<(message: any) => void>
     [BridgeEventType.Error]: Array<(error: string) => void>
     [BridgeEventType.Disconnected]: Array<() => void>
   }
+
+  // Map to store incomplete messages
+  private incompleteMessages: Map<string, { chunks: string[]; expectedChunks: number, timestamp: number }> = new Map();
 
   /**
    * Create a new bridge connection
    * @param options Connection options
    */
   constructor(options: BridgeOptions) {
+
     this.role = options.role
     this.origin = options.origin
     this._bridgeOrigin = options.domain
@@ -103,6 +110,7 @@ export class BridgeConnection {
       [BridgeEventType.Connected]: [],
       [BridgeEventType.SecureChannelEstablished]: [],
       [BridgeEventType.MessageReceived]: [],
+      [BridgeEventType.ChunkRecieved]: [],
       [BridgeEventType.Error]: [],
       [BridgeEventType.Disconnected]: [],
     }
@@ -187,7 +195,7 @@ export class BridgeConnection {
     }
 
     websocket.onmessage = async (event: any) => {
-      this.log("Received message:", event.data)
+      // this.log("Received message:", event.data)
       try {
         const data = JSON.parse(event.data)
         await this.handleWebSocketMessage(data)
@@ -340,38 +348,69 @@ export class BridgeConnection {
    */
   private async handleEncryptedMessage(data: any): Promise<void> {
     try {
+      // decrypt the message
       if (!this.sharedSecret) throw new Error("Shared secret not available")
       const payload = new Uint8Array(Buffer.from(data.params.payload, "base64"))
-      this.log("Got message!XXXS", data)
-
       const decrypted = await decrypt(payload, this.sharedSecret, this.bridgeId)
-      // Parse the decrypted message and check if it's compressed
-      let decryptedJson;
-      try {
-        const parsedData = JSON.parse(decrypted);
-        console.log("1", parsedData);
-        const compressedData = Buffer.from(parsedData.data, "base64");
-        console.log("2", compressedData);
-        const decompressedData = pako.inflate(compressedData);
-        console.log("3", decompressedData);
-        const decompressedText = new TextDecoder().decode(decompressedData);
-        console.log("4", decompressedText);
-        decryptedJson = JSON.parse(decompressedText);
-        this.log(`Decompressed message from ${decrypted.length} bytes to ${decompressedText.length} bytes`);
-      } catch (e) {
-        // If parsing fails, assume it's not in the compressed format
-        decryptedJson = JSON.parse(decrypted);
-      }
-
-      // For joiner role, check if this is a hello message from the creator
-      if (decryptedJson.method === "hello" && !this.secureChannelEstablished) {
-        this.log(`Verified origin: ${data.origin}`)
-        this.secureChannelEstablished = true
-        await this.emit(BridgeEventType.SecureChannelEstablished)
+      let decryptedJson = JSON.parse(decrypted)
+      if (!decryptedJson.chunk || decryptedJson.chunk.length == 1) {
+        if (decryptedJson.method === "hello" && !this.secureChannelEstablished) {
+          // handle handshake message
+          this.log(`Verified origin: ${data.origin}`)
+          this.secureChannelEstablished = true
+          // Notify listeners about the received message
+          await this.emit(BridgeEventType.SecureChannelEstablished)
+        } else {
+          // if has payload, attempt to decompress it it
+          if (decryptedJson.params) {
+            const compressedData = Buffer.from(decryptedJson.params, "base64")
+            const decompressedData = pako.inflate(compressedData)
+            const decompressedText = new TextDecoder().decode(decompressedData)
+            decryptedJson.params = JSON.parse(decompressedText)
+            delete decryptedJson.chunk
+          }
+          // Notify listeners about the received message
+          await this.emit(BridgeEventType.MessageReceived, decryptedJson)
+        }
       } else {
-        this.log("Decrypted message:", decryptedJson)
-        // Notify listeners about the received message
-        await this.emit(BridgeEventType.MessageReceived, decryptedJson)
+        // handle chunked messages
+        const { index, length, id } = decryptedJson.chunk
+        if (index < length - 1) {
+          // handle storage of partial message chunks
+          this.log(`Received chunk ${index + 1} of ${length} for chunk id ${id}`)
+          if (!this.incompleteMessages.has(id) && index === 0) {
+            this.incompleteMessages.set(id, {
+              chunks: [],
+              expectedChunks: length,
+              timestamp: Date.now()
+            })
+          } else if (!this.incompleteMessages.has(id)) {
+            this.log(`Received chunk ${index + 1} for unknown message id ${id}`)
+            throw new Error(`Received chunk ${index + 1} for unknown message id ${id}`)
+          }
+          const message = this.incompleteMessages.get(id)!
+          message.chunks[index] = decryptedJson.params
+          await this.emit(BridgeEventType.ChunkRecieved, decryptedJson.chunk)
+        } else {
+          // handle reconstruction of chunk
+          const message = this.incompleteMessages.get(id)
+          if (!message) {
+            this.log(`No incomplete message found for id ${id}`)
+            throw new Error(`No incomplete message found for id ${id}`)
+          }
+          // recompose the chunks
+          const fullMessage = message.chunks.join("") + decryptedJson.params
+          const compressedMessage = Buffer.from(fullMessage, "base64")
+          const decompressedData = pako.inflate(compressedMessage)
+          const decompressedText = new TextDecoder().decode(decompressedData)
+          const decryptedPayload = JSON.parse(decompressedText)
+          this.log(`Received last chunk ${index} of ${length} for chunk id ${id}`)
+          const returnValue = {
+            method: decryptedJson.method,
+            params: decryptedPayload,
+          }
+          await this.emit(BridgeEventType.MessageReceived, returnValue)
+        }
       }
     } catch (error) {
       this.log("Error decrypting message:", error)
@@ -656,6 +695,7 @@ export class BridgeConnection {
       [BridgeEventType.Connected]: [],
       [BridgeEventType.SecureChannelEstablished]: [],
       [BridgeEventType.MessageReceived]: [],
+      [BridgeEventType.ChunkRecieved]: [],
       [BridgeEventType.Error]: [],
       [BridgeEventType.Disconnected]: [],
     }

@@ -5,8 +5,9 @@ import debug from "debug"
 import * as pako from "pako"
 
 const log = debug("bridge")
-const MAX_PAYLOAD_SIZE = 32768
-const COMPRESSION_THRESHOLD = 1024 // Only compress payloads larger than 1KB
+const MAX_PAYLOAD_SIZE = 32 * 1024 // 32KB (AWS API Gateway limit)
+const CHUNK_SIZE = 1024 * 16 // when to chunk uncompressed payloads
+const CHUNK_WAIT = 50 // 50ms wait between sending chunks to avoid flooding network                             
 
 export interface JsonRpcRequest {
   jsonrpc: string
@@ -42,6 +43,8 @@ export async function createEncryptedJsonRpcRequest(
   const messageToEncrypt = JSON.stringify({
     data: Buffer.from(compressed).toString("base64")
   });
+  log(`Compressed message from ${message.length} bytes to ${messageToEncrypt.length} bytes`);
+
   const encryptedMessage = await encrypt(
     messageToEncrypt,
     sharedSecret,
@@ -57,21 +60,47 @@ export async function getEncryptedJsonPayload(
   params: any,
   sharedSecret: Uint8Array,
   nonce: string,
-): Promise<string> {
-  // compress message
-  const message = JSON.stringify({ method, params: params || {} })
-  const compressed = pako.deflate(message);
-  const messageToEncrypt = JSON.stringify({
-    data: Buffer.from(compressed).toString("base64")
-  });
-  log(`Compressed message from ${message.length} bytes to ${messageToEncrypt.length} bytes`);
+): Promise<string[]> {
+  // Split the encrypted message into chunks
+  let chunks: string[] = [];
+  if (params) {
+    const compressed = Buffer.from(pako.deflate(JSON.stringify(params))).toString("base64");
+    const numChunks = Math.ceil(compressed.length / CHUNK_SIZE);
+    const id = randomBytes(16).toString("hex");
+    for (let i = 0; i < numChunks; i++) {
+      const startIndex = i * CHUNK_SIZE;
+      const endIndex = Math.min(startIndex + CHUNK_SIZE, compressed.length);
+      const chunk = compressed.slice(startIndex, endIndex);
+      const messageToEncrypt = JSON.stringify({
+        method,
+        params: chunk,
+        chunk: {
+          id,
+          index: i,
+          length: numChunks,
+        }
+      });
+      const encryptedMessage = await encrypt(messageToEncrypt, sharedSecret, nonce);
 
-  const encryptedMessage = await encrypt(messageToEncrypt, sharedSecret, nonce)
-  const request = createJsonRpcRequest("encryptedMessage", {
-    payload: Buffer.from(encryptedMessage).toString("base64"),
-  })
-  const payload = JSON.stringify(request)
-  return payload
+      const request = createJsonRpcRequest("encryptedMessage", {
+        payload: Buffer.from(encryptedMessage).toString("base64"),
+      });
+      chunks.push(JSON.stringify(request));
+    }
+  } else {
+    const message = JSON.stringify({ method, params: params || {} });
+    const compressed = pako.deflate(message);
+    const encryptedMessage = await encrypt(
+      message,
+      sharedSecret,
+      nonce,
+    );
+    const request = createJsonRpcRequest("encryptedMessage", {
+      payload: Buffer.from(encryptedMessage).toString("base64"),
+    });
+    chunks.push(JSON.stringify(request));
+  }
+  return chunks;
 }
 
 export async function sendEncryptedJsonRpcRequest(
@@ -83,10 +112,15 @@ export async function sendEncryptedJsonRpcRequest(
 ): Promise<boolean> {
   try {
     const payload = await getEncryptedJsonPayload(method, params, sharedSecret, nonce)
-    if (payload.length > MAX_PAYLOAD_SIZE) {
-      throw new Error(`Payload exceeds max size of ${MAX_PAYLOAD_SIZE} bytes`)
+    for (const payloadChunk of payload) {
+      if (payloadChunk.length > MAX_PAYLOAD_SIZE) {
+        // handle chunking payload
+        throw new Error(`Payload exceeds max size of ${MAX_PAYLOAD_SIZE} bytes`)
+      }
+      websocket.send(payloadChunk);
+      // avoid flooding network - wait 50ms between sending chunks
+      await new Promise((resolve) => setTimeout(resolve, CHUNK_WAIT));
     }
-    websocket.send(payload)
     return true
   } catch (error) {
     log("Error sending encrypted message:", error)
