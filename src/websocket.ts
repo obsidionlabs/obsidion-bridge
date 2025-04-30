@@ -6,10 +6,16 @@ export function getWebSocketClient(url: string, origin?: string) {
     // Node.js environment
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const WebSocket = require("ws")
+    // return new WebSocket(url, {
+    //   headers: {
+    //     Origin: origin || "nodejs",
+    //   },
+    // }) as import("ws").WebSocket
     return new WebSocket(url, {
       headers: {
         Origin: origin || "nodejs",
       },
+      maxPayload: 1024 * 1024, // Default to 128KB if not specified
     }) as import("ws").WebSocket
   }
 }

@@ -4,7 +4,8 @@ import { WebSocketClient } from "./websocket"
 import debug from "debug"
 
 const log = debug("bridge")
-const MAX_PAYLOAD_SIZE = 32768
+// const MAX_PAYLOAD_SIZE = 32768
+const MAX_PAYLOAD_SIZE = 1024 * 1024
 
 export interface JsonRpcRequest {
   jsonrpc: string
