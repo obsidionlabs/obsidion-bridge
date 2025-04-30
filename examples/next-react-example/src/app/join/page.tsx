@@ -1,15 +1,15 @@
 "use client"
-import { useEffect, useState } from "react"
+import { useEffect, useState, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 // import { Bridge, BridgeInterface } from "@obsidion/bridge"
 import { Bridge, BridgeInterface } from "../../../../.."
 import { restoreBridgeSession, saveBridgeSession } from "../../lib/session"
 import { MessagesPanel } from "../components/MessagesPanel"
-
 import debug from "debug"
+
 debug.enable("bridge*")
 
-export default function JoinBridgePage() {
+function JoinBridgeContent() {
   const searchParams = useSearchParams()
   const [connectionString, setConnectionString] = useState("")
   const [bridge, setBridge] = useState<BridgeInterface | null>(null)
@@ -58,7 +58,7 @@ export default function JoinBridgePage() {
       })
 
       // Listen for messages
-      bridge.onSecureMessage((message) => {
+      bridge.onSecureMessage((message: unknown) => {
         setMessages((prev) => [...prev, `Received: ${JSON.stringify(message)}`])
         console.log("Message received:", message)
       })
@@ -74,7 +74,7 @@ export default function JoinBridgePage() {
         setJoinStatus("idle")
       })
 
-      bridge.onError((error) => {
+      bridge.onError((error: string) => {
         setMessages((prev) => [...prev, `Error: ${error}`])
         setJoinStatus("idle")
       })
@@ -98,39 +98,49 @@ export default function JoinBridgePage() {
   }
 
   return (
-    <div className="flex flex-col items-center justify-start min-h-screen p-4 pt-8">
-      <h1 className="text-3xl font-bold mb-8">Join Bridge</h1>
+    <Suspense fallback={<div>Loading...</div>}>
+      <div className="flex flex-col items-center justify-start min-h-screen p-4 pt-8">
+        <h1 className="text-3xl font-bold mb-8">Join Bridge</h1>
 
-      <div className="mb-8 w-full max-w-[800px]">
-        <p className="mb-2 font-medium">Connection String:</p>
-        <div className="flex gap-2">
-          <input
-            id="connectionString"
-            type="text"
-            value={connectionString}
-            onChange={(e) => setConnectionString(e.target.value)}
-            className="flex-1 p-3 border rounded bg-background text-foreground text-sm"
-            placeholder="Enter connection string"
-          />
-          <button
-            onClick={() => handleJoinBridge(connectionString)}
-            className="px-4 py-3 bg-foreground text-background font-medium rounded hover:bg-foreground/90 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={joinStatus !== "idle"}
-          >
-            {joinStatus === "joining"
-              ? "Joining..."
-              : joinStatus === "connected"
-                ? "Connected"
-                : "Join"}
-          </button>
+        <div className="mb-8 w-full max-w-[800px]">
+          <p className="mb-2 font-medium">Connection String:</p>
+          <div className="flex gap-2">
+            <input
+              id="connectionString"
+              type="text"
+              value={connectionString}
+              onChange={(e) => setConnectionString(e.target.value)}
+              className="flex-1 p-3 border rounded bg-background text-foreground text-sm"
+              placeholder="Enter connection string"
+            />
+            <button
+              onClick={() => handleJoinBridge(connectionString)}
+              className="px-4 py-3 bg-foreground text-background font-medium rounded hover:bg-foreground/90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={joinStatus !== "idle"}
+            >
+              {joinStatus === "joining"
+                ? "Joining..."
+                : joinStatus === "connected"
+                  ? "Connected"
+                  : "Join"}
+            </button>
+          </div>
         </div>
-      </div>
 
-      <MessagesPanel
-        messages={messages}
-        onSendMessage={handleSendMessage}
-        defaultMessage="hello from joiner!"
-      />
-    </div>
+        <MessagesPanel
+          messages={messages}
+          onSendMessage={handleSendMessage}
+          defaultMessage="hello from joiner!"
+        />
+      </div>
+    </Suspense>
+  )
+}
+
+export default function JoinBridgePage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <JoinBridgeContent />
+    </Suspense>
   )
 }

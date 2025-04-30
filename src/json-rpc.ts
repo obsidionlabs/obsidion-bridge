@@ -1,4 +1,4 @@
-import { randomBytes } from "crypto"
+import { getRandomBytes } from "./crypto"
 import { encrypt } from "./encryption"
 import { WebSocketClient } from "./websocket"
 import debug from "debug"
@@ -24,9 +24,14 @@ export interface JsonRpcResponse {
 }
 
 export function createJsonRpcRequest(method: string, params: any): JsonRpcRequest {
+  const randBytes = getRandomBytes(16)
+  const id = Array.from(randBytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+
   return {
     jsonrpc: "2.0",
-    id: randomBytes(16).toString("hex"),
+    id,
     method,
     params,
   }
@@ -62,7 +67,9 @@ export async function getEncryptedJsonPayload(
   if (params) {
     const compressed = Buffer.from(pako.deflate(JSON.stringify(params))).toString("base64")
     const numChunks = Math.ceil(compressed.length / CHUNK_SIZE)
-    const id = randomBytes(16).toString("hex")
+    const id = Array.from(getRandomBytes(16))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("")
     for (let i = 0; i < numChunks; i++) {
       const startIndex = i * CHUNK_SIZE
       const endIndex = Math.min(startIndex + CHUNK_SIZE, compressed.length)

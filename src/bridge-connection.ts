@@ -1,5 +1,5 @@
 import { bytesToHex } from "@noble/ciphers/utils"
-import { randomBytes } from "crypto"
+import { getRandomBytes } from "./crypto"
 import { decrypt, encrypt, getSharedSecret, KeyPair } from "./encryption"
 import { sendEncryptedJsonRpcRequest } from "./json-rpc"
 import { getWebSocketClient, WebSocketClient } from "./websocket"
@@ -100,7 +100,7 @@ export class BridgeConnection {
     this.origin = options.origin
     this._bridgeOrigin = options.domain
     this.log = debug(`bridge:${this.role}`)
-    this.bridgeId = options.bridgeId || randomBytes(16).toString("hex")
+    this.bridgeId = options.bridgeId || Buffer.from(getRandomBytes(16)).toString("hex")
     this.keyPair = options.keyPair
     this.reconnect = options.reconnect ?? true
     this.keepalive = options.keepalive ?? true
@@ -379,7 +379,7 @@ export class BridgeConnection {
         const { index, length, id } = decryptedJson.chunk
         if (index < length - 1) {
           // handle storage of partial message chunks
-          this.log(`Received chunk ${index + 1} of ${length} for chunk id ${id}`)
+          this.log(`Received chunk (${index + 1}/${length}) for chunk id ${id}`)
           if (!this.incompleteMessages.has(id) && index === 0) {
             this.incompleteMessages.set(id, {
               chunks: [],
@@ -406,7 +406,7 @@ export class BridgeConnection {
           const decompressedData = pako.inflate(compressedMessage)
           const decompressedText = new TextDecoder().decode(decompressedData)
           const decryptedPayload = JSON.parse(decompressedText)
-          this.log(`Received last chunk ${index} of ${length} for chunk id ${id}`)
+          this.log(`Received last chunk (${index + 1}/${length}) for chunk id ${id}`)
           const returnValue = {
             method: decryptedJson.method,
             params: decryptedPayload,
@@ -453,9 +453,9 @@ export class BridgeConnection {
       try {
         const reconnectionUrl = await this._getWsConnectionUrl()
         // Create new WebSocket connection
-        this.websocket = this.origin
+        this.websocket = await (this.origin
           ? getWebSocketClient(reconnectionUrl, this.origin)
-          : getWebSocketClient(reconnectionUrl)
+          : getWebSocketClient(reconnectionUrl))
         this.setupWebSocketHandlers(this.websocket)
       } catch (error) {
         this.log("Reconnection failed:", error)
@@ -644,9 +644,9 @@ export class BridgeConnection {
    */
   public get connectionString(): string {
     if (this.role === "creator") {
-      return `obsidion:${this.getPublicKey()}?d=${this.origin!}`
+      return `obsidion:${this.getPublicKey()}?d=${this.bridgeOrigin!}`
     } else {
-      return `obsidion:${this.getBridgeId()}?d=${this.origin!}`
+      return `obsidion:${this.getBridgeId()}?d=${this.bridgeOrigin!}`
     }
   }
 
@@ -657,7 +657,9 @@ export class BridgeConnection {
     try {
       this.log("Connecting to bridge", url)
       // Create WebSocket connection to the bridge
-      const websocket = this.origin ? getWebSocketClient(url, this.origin) : getWebSocketClient(url)
+      const websocket = await (this.origin
+        ? getWebSocketClient(url, this.origin)
+        : getWebSocketClient(url))
       this.websocket = websocket
       this.setupWebSocketHandlers(websocket)
     } catch (error) {
