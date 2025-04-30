@@ -15,7 +15,6 @@ export function getWebSocketClient(url: string, origin?: string) {
       headers: {
         Origin: origin || "nodejs",
       },
-      maxPayload: 1024 * 1024, // Default to 128KB if not specified
     }) as import("ws").WebSocket
   }
 }

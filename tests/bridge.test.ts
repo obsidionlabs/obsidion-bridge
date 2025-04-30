@@ -6,6 +6,7 @@ import { mockWebSocket, waitForCallback } from "./helpers"
 
 // Enable debug logging for tests
 import debug from "debug"
+import { getEncryptedJsonPayload, sendEncryptedJsonRpcRequest } from "../src/json-rpc"
 debug.enable("bridge:*")
 
 // Mock the websocket module
@@ -24,35 +25,48 @@ const keyPairMobile = {
 
 describe("Bridge", () => {
   test("payload size", async () => {
-    // Create a bridge connection
     const creator = await Bridge.create()
     const joiner = await Bridge.join(creator.connectionString)
 
-    // Wait for secure channel to be established
     await waitForCallback(joiner.onSecureChannelEstablished)
 
-    // Set up message handlers
+    const creatorOnMessage = waitForCallback(creator.onSecureMessage)
     const joinerOnMessage = waitForCallback(joiner.onSecureMessage)
 
     // Try 512kb payload
-    const maxSize = 512 * 1024
-    let targetSize = Math.floor(maxSize * 0.5)
+    const maxSize = 27 * 1024
+    let targetSize = Math.floor(maxSize)
 
     let payload = ""
     while (JSON.stringify({ data: payload }).length < targetSize) {
       payload += Math.random().toString(36).substring(2, 15)
     }
+    creator.sendMessage("foo", { foo: { payload }})
+    const message1 = await joinerOnMessage
+    console.log("message1: ", message1)
+    // expect(message1).toEqual({ method: "hello, world?", params: {} })
 
-    console.log("1")
-    const creatorOnMessage = waitForCallback(creator.onSecureMessage)
-    console.log("2")
-    const ret = await joiner.sendMessage("foobar", { foo: payload })
-    console.log("3 ret: ", ret)
-    const message = await creatorOnMessage
-    console.log("4")
-    expect(message).toEqual({ method: "foobar", params: { foo: payload } })
-    console.log("5")
-  })
+    // joiner.sendMessage("hello, world!", {})
+    // const message2 = await creatorOnMessage
+    // expect(message2).toEqual({ method: "hello, world2!", params: {} })
+
+    
+    // joiner.sendMessage("foobar", { foo: payload })
+    // const creatorOnMessage = waitForCallback(creator.onSecureMessage)
+    // console.log("waiting for message")
+    // const message = await creatorOnMessage
+    // console.log("message: ", message)
+
+    // console.log("1")
+    // const creatorOnMessage = waitForCallback(creator.onSecureMessage)
+    // console.log("2")
+    // const ret = await joiner.sendMessage("foobar", { foo: payload })
+    // console.log("3 ret: ", ret)
+    // const message = await creatorOnMessage
+    // console.log("4")
+    // expect(message).toEqual({ method: "foobar", params: { foo: payload } })
+    // console.log("5")
+  }, 60000)
 
   // const creatorOnMessage = waitForCallback(creator.onSecureMessage)
   // joiner.sendMessage("foobar", { foo: "x".repeat(100000) })

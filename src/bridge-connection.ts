@@ -4,6 +4,7 @@ import { decrypt, encrypt, getSharedSecret, KeyPair } from "./encryption"
 import { sendEncryptedJsonRpcRequest } from "./json-rpc"
 import { getWebSocketClient, WebSocketClient } from "./websocket"
 import debug from "debug"
+import * as pako from "pako"
 
 const DEFAULT_MAX_RECONNECT_ATTEMPTS = 10
 
@@ -340,10 +341,27 @@ export class BridgeConnection {
   private async handleEncryptedMessage(data: any): Promise<void> {
     try {
       if (!this.sharedSecret) throw new Error("Shared secret not available")
-
       const payload = new Uint8Array(Buffer.from(data.params.payload, "base64"))
+      this.log("Got message!XXXS", data)
+
       const decrypted = await decrypt(payload, this.sharedSecret, this.bridgeId)
-      const decryptedJson = JSON.parse(decrypted)
+      // Parse the decrypted message and check if it's compressed
+      let decryptedJson;
+      try {
+        const parsedData = JSON.parse(decrypted);
+        console.log("1", parsedData);
+        const compressedData = Buffer.from(parsedData.data, "base64");
+        console.log("2", compressedData);
+        const decompressedData = pako.inflate(compressedData);
+        console.log("3", decompressedData);
+        const decompressedText = new TextDecoder().decode(decompressedData);
+        console.log("4", decompressedText);
+        decryptedJson = JSON.parse(decompressedText);
+        this.log(`Decompressed message from ${decrypted.length} bytes to ${decompressedText.length} bytes`);
+      } catch (e) {
+        // If parsing fails, assume it's not in the compressed format
+        decryptedJson = JSON.parse(decrypted);
+      }
 
       // For joiner role, check if this is a hello message from the creator
       if (decryptedJson.method === "hello" && !this.secureChannelEstablished) {

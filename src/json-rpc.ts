@@ -2,10 +2,11 @@ import { randomBytes } from "crypto"
 import { encrypt } from "./encryption"
 import { WebSocketClient } from "./websocket"
 import debug from "debug"
+import * as pako from "pako"
 
 const log = debug("bridge")
-// const MAX_PAYLOAD_SIZE = 32768
-const MAX_PAYLOAD_SIZE = 1024 * 1024
+const MAX_PAYLOAD_SIZE = 32768
+const COMPRESSION_THRESHOLD = 1024 // Only compress payloads larger than 1KB
 
 export interface JsonRpcRequest {
   jsonrpc: string
@@ -36,8 +37,13 @@ export async function createEncryptedJsonRpcRequest(
   sharedSecret: Uint8Array,
   topic: string,
 ): Promise<JsonRpcRequest> {
+  const message = JSON.stringify({ method, params: params || {} })
+  const compressed = pako.deflate(message);
+  const messageToEncrypt = JSON.stringify({
+    data: Buffer.from(compressed).toString("base64")
+  });
   const encryptedMessage = await encrypt(
-    JSON.stringify({ method, params: params || {} }),
+    messageToEncrypt,
     sharedSecret,
     topic,
   )
@@ -52,14 +58,19 @@ export async function getEncryptedJsonPayload(
   sharedSecret: Uint8Array,
   nonce: string,
 ): Promise<string> {
+  // compress message
   const message = JSON.stringify({ method, params: params || {} })
-  const encryptedMessage = await encrypt(message, sharedSecret, nonce)
+  const compressed = pako.deflate(message);
+  const messageToEncrypt = JSON.stringify({
+    data: Buffer.from(compressed).toString("base64")
+  });
+  log(`Compressed message from ${message.length} bytes to ${messageToEncrypt.length} bytes`);
+
+  const encryptedMessage = await encrypt(messageToEncrypt, sharedSecret, nonce)
   const request = createJsonRpcRequest("encryptedMessage", {
     payload: Buffer.from(encryptedMessage).toString("base64"),
   })
   const payload = JSON.stringify(request)
-  log(`Original message: ${message} (${message.length} bytes)`)
-  log(`Encrypted message: ${payload} (${payload.length} bytes)`)
   return payload
 }
 
