@@ -398,7 +398,7 @@ export class BridgeConnection {
             this.log(`No incomplete message found for id ${id}`)
             throw new Error(`No incomplete message found for id ${id}`)
           }
-          // recompose the chunks
+          // recompose the chunks into the message
           const fullMessage = message.chunks.join("") + decryptedJson.params
           const compressedMessage = Buffer.from(fullMessage, "base64")
           const decompressedData = pako.inflate(compressedMessage)
@@ -409,7 +409,11 @@ export class BridgeConnection {
             method: decryptedJson.method,
             params: decryptedPayload,
           }
+          // delete the message from the map
+          this.incompleteMessages.delete(id)
+          // Notify listeners about the received message
           await this.emit(BridgeEventType.MessageReceived, returnValue)
+          
         }
       }
     } catch (error) {
