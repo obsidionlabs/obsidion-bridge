@@ -6,7 +6,6 @@ import { mockWebSocket, waitForCallback } from "./helpers"
 
 // Enable debug logging for tests
 import debug from "debug"
-import { getEncryptedJsonPayload, sendEncryptedJsonRpcRequest } from "../src/json-rpc"
 debug.enable("bridge:*")
 
 // Mock the websocket module
@@ -24,7 +23,6 @@ const keyPairMobile = {
 }
 
 describe("Bridge", () => {
-
   test("should connect to bridge and establish secure channel", async () => {
     const creator = await Bridge.create()
 

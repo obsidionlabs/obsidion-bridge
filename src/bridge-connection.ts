@@ -86,14 +86,16 @@ export class BridgeConnection {
   }
 
   // Map to store incomplete messages
-  private incompleteMessages: Map<string, { chunks: string[]; expectedChunks: number, timestamp: number }> = new Map();
+  private incompleteMessages: Map<
+    string,
+    { chunks: string[]; expectedChunks: number; timestamp: number }
+  > = new Map()
 
   /**
    * Create a new bridge connection
    * @param options Connection options
    */
   constructor(options: BridgeOptions) {
-
     this.role = options.role
     this.origin = options.origin
     this._bridgeOrigin = options.domain
@@ -352,7 +354,7 @@ export class BridgeConnection {
       if (!this.sharedSecret) throw new Error("Shared secret not available")
       const payload = new Uint8Array(Buffer.from(data.params.payload, "base64"))
       const decrypted = await decrypt(payload, this.sharedSecret, this.bridgeId)
-      let decryptedJson = JSON.parse(decrypted)
+      const decryptedJson = JSON.parse(decrypted)
       if (!decryptedJson.chunk || decryptedJson.chunk.length == 1) {
         if (decryptedJson.method === "hello" && !this.secureChannelEstablished) {
           // handle handshake message
@@ -382,7 +384,7 @@ export class BridgeConnection {
             this.incompleteMessages.set(id, {
               chunks: [],
               expectedChunks: length,
-              timestamp: Date.now()
+              timestamp: Date.now(),
             })
           } else if (!this.incompleteMessages.has(id)) {
             this.log(`Received chunk ${index + 1} for unknown message id ${id}`)
@@ -413,7 +415,6 @@ export class BridgeConnection {
           this.incompleteMessages.delete(id)
           // Notify listeners about the received message
           await this.emit(BridgeEventType.MessageReceived, returnValue)
-          
         }
       }
     } catch (error) {
