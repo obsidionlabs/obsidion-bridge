@@ -2,7 +2,7 @@ import { describe, test, expect, mock } from "bun:test"
 import { bytesToHex, hexToBytes } from "@noble/ciphers/utils"
 import { getSharedSecret } from "../src/encryption"
 import { Bridge } from "../src"
-import { delay, mockWebSocket, waitForCallback } from "./helpers"
+import { mockWebSocket, waitForCallback } from "./helpers"
 
 // Enable debug logging for tests
 import debug from "debug"
