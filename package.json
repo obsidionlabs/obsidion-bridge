@@ -1,6 +1,6 @@
 {
   "name": "@obsidion/bridge",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Obsidion Bridge: A reliable end-to-end encrypted websocket bridge",
   "license": "Apache-2.0",
   "type": "module",
