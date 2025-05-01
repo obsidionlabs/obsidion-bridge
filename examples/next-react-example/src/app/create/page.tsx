@@ -31,6 +31,7 @@ export default function CreateBridgePage() {
         remotePublicKey: savedBridgeSession?.remotePublicKey,
         resume: !!savedBridgeSession,
       })
+
       setBridge(bridge)
       setConnectionString(bridge.connectionString)
       console.log("Bridge created. Connection string:", bridge.connectionString)

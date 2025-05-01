@@ -34,6 +34,8 @@
   "dependencies": {
     "@noble/ciphers": "^1.2.1",
     "@noble/secp256k1": "^2.2.3",
+    "@types/pako": "^2.0.3",
+    "pako": "^2.1.0",
     "debug": "^4.3.4",
     "ws": "^8.16.0"
   },

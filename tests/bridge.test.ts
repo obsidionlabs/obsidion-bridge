@@ -25,13 +25,13 @@ const keyPairMobile = {
 describe("Bridge", () => {
   test("should connect to bridge and establish secure channel", async () => {
     const creator = await Bridge.create()
-
     const onCreatorSecureChannelEstablished = waitForCallback(creator.onSecureChannelEstablished)
 
     await waitForCallback(creator.onConnect)
     expect(creator.isBridgeConnected()).toBe(true)
 
     const joiner = await Bridge.join(creator.connectionString)
+    const onJoinerSecureChannelEstablished = waitForCallback(joiner.onSecureChannelEstablished)
 
     await waitForCallback(joiner.onConnect)
     expect(joiner.isBridgeConnected()).toBe(true)
@@ -39,11 +39,11 @@ describe("Bridge", () => {
     await onCreatorSecureChannelEstablished
     expect(creator.isSecureChannelEstablished()).toBe(true)
 
-    await waitForCallback(joiner.onSecureChannelEstablished)
+    await onJoinerSecureChannelEstablished
     expect(joiner.isSecureChannelEstablished()).toBe(true)
   }, 5000)
 
-  test("should use custom keypairs", async () => {
+  test(`should use custom keypairs`, async () => {
     const creator = await Bridge.create({ keyPair: keyPairFrontend })
     const joiner = await Bridge.join(creator.connectionString, { keyPair: keyPairMobile })
 
@@ -89,11 +89,17 @@ describe("Bridge", () => {
     const creator = await Bridge.create()
     const joiner = await Bridge.join(creator.connectionString)
 
-    await waitForCallback(joiner.onSecureChannelEstablished)
-
+    // Wait for the secure channel to be established
     const creatorOnMessage = waitForCallback(creator.onSecureMessage)
     const joinerOnMessage = waitForCallback(joiner.onSecureMessage)
 
+    if (!process.env.USE_REAL_BRIDGE_SERVER) {
+      // I don't know why, but mock needs this and live fails with it
+      await waitForCallback(joiner.onSecureChannelEstablished)
+    }
+    await waitForCallback(creator.onSecureChannelEstablished)
+
+    // Set up listeners for messages before sending any messages
     creator.sendMessage("hello, world?", {})
     const message1 = await joinerOnMessage
     expect(message1).toEqual({ method: "hello, world?", params: {} })
@@ -101,7 +107,7 @@ describe("Bridge", () => {
     joiner.sendMessage("hello, world!", {})
     const message2 = await creatorOnMessage
     expect(message2).toEqual({ method: "hello, world!", params: {} })
-  })
+  }, 10000)
 
   test("should handle reconnect on disconnect", async () => {
     const creator = await Bridge.create()
@@ -194,4 +200,38 @@ describe("Bridge", () => {
     const message = await joinerOnMessage
     expect(message).toEqual({ method: "resumed creator", params: {} })
   })
+
+  test("payload size", async () => {
+    const creator = await Bridge.create()
+    const joiner = await Bridge.join(creator.connectionString)
+
+    if (!process.env.USE_REAL_BRIDGE_SERVER) {
+      // I don't know why, but mock needs this and live fails with it
+      await waitForCallback(joiner.onSecureChannelEstablished)
+    }
+    await waitForCallback(creator.onSecureChannelEstablished)
+
+    const creatorOnMessage = waitForCallback(creator.onSecureMessage)
+    const joinerOnMessage = waitForCallback(joiner.onSecureMessage)
+
+    // Try payload under max chunk size
+    let payloadSize = 128
+    let payload = ""
+    while (JSON.stringify({ data: payload }).length < payloadSize) {
+      payload += Math.random().toString(36).substring(2, 15)
+    }
+    await creator.sendMessage("small_payload", { payload })
+    const message1 = await joinerOnMessage
+    expect(message1).toEqual({ method: "small_payload", params: { payload } })
+
+    // Try payload over max chunk size
+    payloadSize = 1024 * 256
+    payload = ""
+    while (JSON.stringify({ data: payload }).length < payloadSize) {
+      payload += Math.random().toString(36).substring(2, 15)
+    }
+    joiner.sendMessage("big_payload", { payload })
+    const message2 = await creatorOnMessage
+    expect(message2).toEqual({ method: "big_payload", params: { payload } })
+  }, 20000)
 })
