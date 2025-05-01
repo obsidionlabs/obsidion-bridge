@@ -364,12 +364,26 @@ export class BridgeConnection {
           await this.emit(BridgeEventType.SecureChannelEstablished)
         } else {
           // if has payload, attempt to decompress it it
-          if (decryptedJson.params) {
-            const compressedData = Buffer.from(decryptedJson.params, "base64")
-            const decompressedData = pako.inflate(compressedData)
-            const decompressedText = new TextDecoder().decode(decompressedData)
-            decryptedJson.params = JSON.parse(decompressedText)
-            delete decryptedJson.chunk
+          try {
+            if (decryptedJson.params) {
+              this.log(`Received compressed single-part message`)
+              const compressedData = Buffer.from(decryptedJson.params, "base64")
+              const decompressedData = pako.inflate(compressedData)
+              const decompressedText = new TextDecoder().decode(decompressedData)
+              decryptedJson.params = JSON.parse(decompressedText)
+              delete decryptedJson.chunk
+            }
+          } catch (error) {
+            // ensure error was due to compression
+            // this is included to ensure legacy messages are not rejected
+            if (error !== "incorrect header check") {
+              throw new Error("Failed to parse data")
+            }
+            this.log(`Received uncompressed single-part message`)
+            // check if the data needs to be json parsed
+            try {
+              decryptedJson.params = JSON.parse(decryptedJson.params)
+            } catch (error) {}
           }
           // Notify listeners about the received message
           await this.emit(BridgeEventType.MessageReceived, decryptedJson)
