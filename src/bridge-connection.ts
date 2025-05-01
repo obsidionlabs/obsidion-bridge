@@ -349,6 +349,7 @@ export class BridgeConnection {
    * Handle encrypted message
    */
   private async handleEncryptedMessage(data: any): Promise<void> {
+    console.log("Received encrypted message:")
     try {
       // decrypt the message
       if (!this.sharedSecret) throw new Error("Shared secret not available")

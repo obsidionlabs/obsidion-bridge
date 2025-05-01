@@ -111,8 +111,11 @@ export class MockWebSocket {
       }, timeout)
 
       const messageHandler = (event: { data: string }) => {
+        console.log("A")
         clearTimeout(timeoutId)
+        console.log("B")
         this.onmessageHandlers = this.onmessageHandlers.filter((h) => h !== messageHandler)
+        console.log("C")
         resolve(event.data)
       }
 
@@ -247,9 +250,13 @@ const mockBridgeServerClientConnect = function () {
 const mockBridgeServerMessageRelay = function (data: string): string | undefined {
   // The WebSocket server will parse the data as JSON and throw error if invalid
   let parsedData: any
+  console.debug(`[Bridge] Sending message: `)
+
   try {
+    console.log("Parsing JSON")
     parsedData = JSON.parse(data)
   } catch (error) {
+    console.log("Invalid JSON:", error)
     throw new Error("Invalid JSON: " + error.message)
   }
   // The WebSocket server will set the origin property on every message relayed if the origin is set
