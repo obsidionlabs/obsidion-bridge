@@ -2,7 +2,7 @@ import { describe, test, expect, mock } from "bun:test"
 import { bytesToHex, hexToBytes } from "@noble/ciphers/utils"
 import { getSharedSecret } from "../src/encryption"
 import { Bridge } from "../src"
-import { mockWebSocket, waitForCallback } from "./helpers"
+import { delay, mockWebSocket, waitForCallback } from "./helpers"
 
 // Enable debug logging for tests
 import debug from "debug"
@@ -85,29 +85,29 @@ describe("Bridge", () => {
     expect(error).toContain("origin")
   })
 
-  // @fix
-  // test("should send messages over bridge", async () => {
-  //   const creator = await Bridge.create();
-  //   const joiner = await Bridge.join(creator.connectionString);
+  test("should send messages over bridge", async () => {
+    const creator = await Bridge.create()
+    const joiner = await Bridge.join(creator.connectionString)
 
-  //   // Wait for the secure channel to be established
-  //   const creatorOnMessage = waitForCallback(creator.onSecureMessage);
-  //   const joinerOnMessage = waitForCallback(joiner.onSecureMessage);
+    // Wait for the secure channel to be established
+    const creatorOnMessage = waitForCallback(creator.onSecureMessage)
+    const joinerOnMessage = waitForCallback(joiner.onSecureMessage)
 
-  //   await waitForCallback(joiner.onSecureChannelEstablished);
+    if (!process.env.USE_REAL_BRIDGE_SERVER) {
+      // I don't know why, but mock needs this and live fails with it
+      await waitForCallback(joiner.onSecureChannelEstablished)
+    }
+    await waitForCallback(creator.onSecureChannelEstablished)
 
-  //   // Set up listeners for messages before sending any messages
+    // Set up listeners for messages before sending any messages
+    creator.sendMessage("hello, world?", {})
+    const message1 = await joinerOnMessage
+    expect(message1).toEqual({ method: "hello, world?", params: {} })
 
-  //   // Send a message from the creator to the joiner
-  //   creator.sendMessage("hello, world?", {});
-  //   const message1 = await joinerOnMessage;
-  //   expect(message1).toEqual({ method: "hello, world?", params: {} });
-
-  //   // // Uncomment and test the reverse message flow
-  //   // joiner.sendMessage("hello, world!", {});
-  //   // const message2 = await creatorOnMessage;
-  //   // expect(message2).toEqual({ method: "hello, world!", params: {} });
-  // }, 10000);
+    joiner.sendMessage("hello, world!", {})
+    const message2 = await creatorOnMessage
+    expect(message2).toEqual({ method: "hello, world!", params: {} })
+  }, 10000)
 
   test("should handle reconnect on disconnect", async () => {
     const creator = await Bridge.create()
@@ -201,33 +201,37 @@ describe("Bridge", () => {
     expect(message).toEqual({ method: "resumed creator", params: {} })
   })
 
-  // test("payload size", async () => {
-  //   const creator = await Bridge.create()
-  //   const joiner = await Bridge.join(creator.connectionString)
+  test("payload size", async () => {
+    const creator = await Bridge.create()
+    const joiner = await Bridge.join(creator.connectionString)
 
-  //   await waitForCallback(joiner.onSecureChannelEstablished)
+    if (!process.env.USE_REAL_BRIDGE_SERVER) {
+      // I don't know why, but mock needs this and live fails with it
+      await waitForCallback(joiner.onSecureChannelEstablished)
+    }
+    await waitForCallback(creator.onSecureChannelEstablished)
 
-  //   const creatorOnMessage = waitForCallback(creator.onSecureMessage)
-  //   const joinerOnMessage = waitForCallback(joiner.onSecureMessage)
+    const creatorOnMessage = waitForCallback(creator.onSecureMessage)
+    const joinerOnMessage = waitForCallback(joiner.onSecureMessage)
 
-  //   // Try payload under max chunk size
-  //   let payloadSize = 128
-  //   let payload = ""
-  //   while (JSON.stringify({ data: payload }).length < payloadSize) {
-  //     payload += Math.random().toString(36).substring(2, 15)
-  //   }
-  //   await creator.sendMessage("small_payload", { payload })
-  //   const message1 = await joinerOnMessage
-  //   // expect(message1).toEqual({ method: "small_payload", params: { payload } })
+    // Try payload under max chunk size
+    let payloadSize = 128
+    let payload = ""
+    while (JSON.stringify({ data: payload }).length < payloadSize) {
+      payload += Math.random().toString(36).substring(2, 15)
+    }
+    await creator.sendMessage("small_payload", { payload })
+    const message1 = await joinerOnMessage
+    expect(message1).toEqual({ method: "small_payload", params: { payload } })
 
-  //   // // Try payload over max chunk size
-  //   // payloadSize = 1024 * 32
-  //   // payload = ""
-  //   // while (JSON.stringify({ data: payload }).length < payloadSize) {
-  //   //   payload += Math.random().toString(36).substring(2, 15)
-  //   // }
-  //   // joiner.sendMessage("big_payload", { payload })
-  //   // const message2 = await creatorOnMessage
-  //   // expect(message2).toEqual({ method: "big_payload", params: { payload } })
-  // }, 30000)
+    // Try payload over max chunk size
+    payloadSize = 1024 * 256
+    payload = ""
+    while (JSON.stringify({ data: payload }).length < payloadSize) {
+      payload += Math.random().toString(36).substring(2, 15)
+    }
+    joiner.sendMessage("big_payload", { payload })
+    const message2 = await creatorOnMessage
+    expect(message2).toEqual({ method: "big_payload", params: { payload } })
+  }, 20000)
 })
