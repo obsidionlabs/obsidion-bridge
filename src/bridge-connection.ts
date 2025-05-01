@@ -383,7 +383,10 @@ export class BridgeConnection {
             // check if the data needs to be json parsed
             try {
               decryptedJson.params = JSON.parse(decryptedJson.params)
-            } catch (error) {}
+            } catch {
+              // lint wants something here - i'd leave this empty tbh
+              this.log("No JSON parsing needed")
+            }
           }
           // Notify listeners about the received message
           await this.emit(BridgeEventType.MessageReceived, decryptedJson)
