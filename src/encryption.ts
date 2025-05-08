@@ -1,6 +1,7 @@
 import { gcm } from "@noble/ciphers/aes"
 import { utf8ToBytes } from "@noble/ciphers/utils"
-import { getPublicKey, utils, getSharedSecret as getSharedSecretSecp256k1 } from "@noble/secp256k1"
+import * as secp256k1 from "@noble/secp256k1"
+import { sha256 } from "@noble/hashes/sha2"
 
 /**
  * Key pair for ECDH key exchange
@@ -13,15 +14,15 @@ export interface KeyPair {
 async function sha256Truncate(topic: string): Promise<Uint8Array> {
   const encoder = new TextEncoder()
   const data = encoder.encode(topic)
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data)
+  const hashBuffer = await sha256(data)
   const fullHashArray = new Uint8Array(hashBuffer)
   const truncatedHashArray = fullHashArray.slice(0, 12)
   return truncatedHashArray
 }
 
 export async function generateECDHKeyPair() {
-  const privKey = utils.randomPrivateKey()
-  const pubKey = getPublicKey(privKey)
+  const privKey = secp256k1.utils.randomPrivateKey()
+  const pubKey = secp256k1.getPublicKey(privKey)
   return {
     privateKey: privKey,
     publicKey: pubKey,
@@ -29,7 +30,7 @@ export async function generateECDHKeyPair() {
 }
 
 export async function getSharedSecret(privateKey: Uint8Array, publicKey: Uint8Array) {
-  const sharedSecret = getSharedSecretSecp256k1(privateKey, publicKey)
+  const sharedSecret = secp256k1.getSharedSecret(privateKey, publicKey)
   return sharedSecret.slice(0, 32)
 }
 
