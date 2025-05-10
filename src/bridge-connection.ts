@@ -365,7 +365,7 @@ export class BridgeConnection {
         } else {
           // if has payload, attempt to decompress it it
           try {
-            if (decryptedJson.params) {
+            if (decryptedJson.params && decryptedJson.params.length > 0) {
               this.log(`Received compressed single-part message`)
               const compressedData = Buffer.from(decryptedJson.params, "base64")
               const decompressedData = pako.inflate(compressedData)
@@ -377,7 +377,8 @@ export class BridgeConnection {
             // ensure error was due to compression
             // this is included to ensure legacy messages are not rejected
             if (error !== "incorrect header check") {
-              throw new Error("Failed to parse data")
+              console.error("Some error happened data:", error)
+              throw new Error("Failed to parse data: ")
             }
             this.log(`Received uncompressed single-part message`)
             // check if the data needs to be json parsed

@@ -67,6 +67,7 @@ export async function getEncryptedJsonPayload(
   if (params) {
     const compressed = Buffer.from(pako.deflate(JSON.stringify(params))).toString("base64")
     const numChunks = Math.ceil(compressed.length / CHUNK_SIZE)
+    console.log("NUM CHUNKS", numChunks);
     const id = Array.from(getRandomBytes(16))
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("")
