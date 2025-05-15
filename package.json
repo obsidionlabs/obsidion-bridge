@@ -6,29 +6,25 @@
   "type": "module",
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
-  "browser": "./dist/esm/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
   "files": [
     "dist"
   ],
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "browser": "./dist/esm/index.js",
-      "import": "./dist/esm/index.js",
-      "require": "./dist/cjs/index.js",
-      "default": "./dist/esm/index.js"
-    }
-  },
   "scripts": {
     "test": "bun test tests/*.test.ts",
     "coverage": "bun test tests/*.test.ts --coverage",
     "check": "tsc --noEmit && prettier -c . && eslint src tests examples --ext .ts",
     "format": "prettier -c -w .",
-    "build": "rimraf ./dist && bun run build:bundle && bun run build:types",
-    "build:bundle": "node scripts/esbuild.mjs",
-    "build:types": "node scripts/gen-types.mjs",
-    "build:watch": "rimraf ./dist && concurrently \"node scripts/esbuild.mjs --watch\" \"node scripts/gen-types.mjs --watch\"",
+    "build": "rimraf ./dist && tsc && tsc -p tsconfig.cjs.json && bun run build:fix-aliases",
+    "build:watch": "rimraf ./dist && tsc -w",
+    "build:fix-aliases": "bun run scripts/fix-aliases.mjs",
     "prepublishOnly": "bun run format && bun run check && bun run test && bun run build"
   },
   "dependencies": {
@@ -38,6 +34,7 @@
     "@types/pako": "^2.0.3",
     "debug": "^4.3.4",
     "pako": "^2.1.0",
+    "tsc-alias": "^1.8.16",
     "ws": "^8.16.0"
   },
   "devDependencies": {
@@ -48,8 +45,6 @@
     "@types/ws": "^8.5.10",
     "@typescript-eslint/eslint-plugin": "^8.23.0",
     "@typescript-eslint/parser": "^8.23.0",
-    "concurrently": "^8.2.2",
-    "esbuild": "^0.25.2",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.3",
@@ -59,5 +54,6 @@
   },
   "peerDependencies": {
     "typescript": "^5.0.0"
-  }
+  },
+  "packageManager": "bun@1.2.13"
 }
