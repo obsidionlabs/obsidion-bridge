@@ -45,6 +45,7 @@ export interface BridgeOptions {
   origin?: string
   domain?: string
   pingInterval?: number
+  bridgeUrl?: string
 }
 
 /**
@@ -74,6 +75,7 @@ export class BridgeConnection {
   private isReconnecting = false
   private isConnected = false
   private resumedSession = false
+  private bridgeUrl?: string
 
   // Event handlers
   private eventListeners: {
@@ -106,6 +108,7 @@ export class BridgeConnection {
     this.keepalive = options.keepalive ?? true
     this.maxReconnectAttempts = options.reconnectAttempts || DEFAULT_MAX_RECONNECT_ATTEMPTS
     this.pingInterval = options.pingInterval || 30000
+    this.bridgeUrl = options.bridgeUrl ?? "wss://bridge.zkpassport.id"
 
     // Initialize event listeners
     this.eventListeners = {
@@ -606,13 +609,13 @@ export class BridgeConnection {
    */
   public async _getWsConnectionUrl(): Promise<string> {
     if (this.role === "creator") {
-      return `wss://bridge.zkpassport.id?topic=${this.getBridgeId()}`
+      return `${this.bridgeUrl}?topic=${this.getBridgeId()}`
     } else {
       if (!this.isSecureChannelEstablished()) {
         const greeting = await this.createEncryptedGreeting()
-        return `wss://bridge.zkpassport.id?topic=${this.getBridgeId()}&pubkey=${this.getPublicKey()}&greeting=${greeting}`
+        return `${this.bridgeUrl}?topic=${this.getBridgeId()}&pubkey=${this.getPublicKey()}&greeting=${greeting}`
       } else {
-        return `wss://bridge.zkpassport.id?topic=${this.getBridgeId()}`
+        return `${this.bridgeUrl}?topic=${this.getBridgeId()}`
       }
     }
   }
