@@ -18,6 +18,7 @@ export interface CreateOptions {
   keepalive?: boolean
   debug?: boolean
   pingInterval?: number
+  bridgeUrl?: string
 }
 
 /**
@@ -30,6 +31,7 @@ export interface JoinOptions {
   keepalive?: boolean
   debug?: boolean
   pingInterval?: number
+  bridgeUrl?: string
 }
 
 /**
@@ -102,6 +104,7 @@ export class Bridge {
       reconnect: options.reconnect,
       keepalive: options.keepalive,
       pingInterval: options.pingInterval,
+      bridgeUrl: options.bridgeUrl,
     })
 
     // Resume existing bridge session if requested
@@ -171,6 +174,7 @@ export class Bridge {
       reconnect: options.reconnect,
       keepalive: options.keepalive,
       pingInterval: options.pingInterval,
+      bridgeUrl: options.bridgeUrl,
     })
 
     // Set remote public key
