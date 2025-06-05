@@ -398,36 +398,44 @@ export class BridgeConnection {
       } else {
         // handle chunked messages
         const { index, length, id } = decryptedJson.chunk
-        if (index < length - 1) {
-          // handle storage of partial message chunks
-          this.log(`Received chunk (${index + 1}/${length}) for chunk id ${id}`)
-          if (!this.incompleteMessages.has(id) && index === 0) {
-            this.incompleteMessages.set(id, {
-              chunks: [],
-              expectedChunks: length,
-              timestamp: Date.now(),
-            })
-          } else if (!this.incompleteMessages.has(id)) {
-            this.log(`Received chunk ${index + 1} for unknown message id ${id}`)
-            throw new Error(`Received chunk ${index + 1} for unknown message id ${id}`)
-          }
-          const message = this.incompleteMessages.get(id)!
-          message.chunks[index] = decryptedJson.params
-          await this.emit(BridgeEventType.ChunkRecieved, decryptedJson.chunk)
-        } else {
-          // handle reconstruction of chunk
-          const message = this.incompleteMessages.get(id)
-          if (!message) {
-            this.log(`No incomplete message found for id ${id}`)
-            throw new Error(`No incomplete message found for id ${id}`)
-          }
+        this.log(`Received chunk (${index + 1}/${length}) for chunk id ${id}`)
+
+        // Initialize incomplete message storage if this is the first chunk we receive for this id
+        if (!this.incompleteMessages.has(id)) {
+          this.incompleteMessages.set(id, {
+            chunks: new Array(length), // Pre-allocate array with correct length
+            expectedChunks: length,
+            timestamp: Date.now(),
+          })
+        }
+
+        const message = this.incompleteMessages.get(id)!
+
+        // Verify the expected chunks count matches
+        if (message.expectedChunks !== length) {
+          this.log(
+            `Chunk count mismatch for id ${id}. Expected ${message.expectedChunks}, got ${length}`,
+          )
+          throw new Error(
+            `Chunk count mismatch for id ${id}. Expected ${message.expectedChunks}, got ${length}`,
+          )
+        }
+
+        // Store the chunk at the correct index
+        message.chunks[index] = decryptedJson.params
+        await this.emit(BridgeEventType.ChunkRecieved, decryptedJson.chunk)
+
+        // Check if we have received all chunks (no undefined values in the array)
+        const allChunksReceived = message.chunks.every((chunk) => chunk !== undefined)
+
+        if (allChunksReceived) {
           // recompose the chunks into the message
-          const fullMessage = message.chunks.join("") + decryptedJson.params
+          const fullMessage = message.chunks.join("")
           const compressedMessage = Buffer.from(fullMessage, "base64")
           const decompressedData = pako.inflate(compressedMessage)
           const decompressedText = new TextDecoder().decode(decompressedData)
           const decryptedPayload = JSON.parse(decompressedText)
-          this.log(`Received last chunk (${index + 1}/${length}) for chunk id ${id}`)
+          this.log(`Received all chunks for chunk id ${id}, reconstructing message`)
           const returnValue = {
             method: decryptedJson.method,
             params: decryptedPayload,
