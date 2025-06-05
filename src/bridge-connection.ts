@@ -426,7 +426,14 @@ export class BridgeConnection {
         await this.emit(BridgeEventType.ChunkRecieved, decryptedJson.chunk)
 
         // Check if we have received all chunks (no undefined values in the array)
-        const allChunksReceived = message.chunks.every((chunk) => chunk !== undefined)
+        const allChunksReceived = (() => {
+          for (let i = 0; i < message.chunks.length; i++) {
+            if (message.chunks[i] === undefined) {
+              return false
+            }
+          }
+          return true
+        })()
 
         if (allChunksReceived) {
           // recompose the chunks into the message
