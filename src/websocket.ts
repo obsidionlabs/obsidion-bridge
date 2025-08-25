@@ -9,7 +9,11 @@ export async function getWebSocketClient(
   origin?: string,
 ): Promise<WebSocket | WSWebSocket> {
   // Browser environment - use native WebSocket
-  if (typeof window !== "undefined" && window.WebSocket) {
+  if (
+    (typeof window !== "undefined" && window.WebSocket) ||
+    (typeof globalThis !== "undefined" && globalThis.WebSocket) ||
+    (typeof global !== "undefined" && global.WebSocket)
+  ) {
     return new WebSocket(url)
   }
 
