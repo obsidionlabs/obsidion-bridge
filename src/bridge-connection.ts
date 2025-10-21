@@ -206,20 +206,40 @@ export class BridgeConnection {
         await this.handleWebSocketMessage(data)
       } catch (error) {
         this.log("Error parsing message:", error)
-        await this.emit(BridgeEventType.Error, `Error parsing message: ${error}`)
+        await this.emit(
+          BridgeEventType.Error,
+          `Error parsing message: ${error instanceof Error ? error.message : String(error)}`,
+        )
       }
     }
-
-    websocket.onerror = async (error: any) => {
-      this.log("WebSocket Error:", error)
-      await this.emit(BridgeEventType.Error, `WebSocket error: ${error}`)
+    websocket.onerror = async (event: Event) => {
+      const ws = event.target as WebSocket
+      const context = {
+        url: ws.url,
+        readyState: ws.readyState, // 0-CONNECTING, 1-OPEN, 2-CLOSING, 3-CLOSED
+        timeStamp: event.timeStamp,
+        type: event.type, // always "error"
+      }
+      this.log("WebSocket error", context)
+      await this.emit(BridgeEventType.Error, "WebSocket error occurred")
 
       if (this.reconnect && !this.isConnected) {
         await this.handleReconnect()
       }
     }
+    websocket.onclose = async (event: CloseEvent) => {
+      const { code, reason, wasClean } = event
+      const diagnostic =
+        reason ||
+        (code === 1006
+          ? "Abnormal closure: network/TLS/handshake failure likely"
+          : code === 0
+            ? "Connection failed before upgrade: DNS, CORS, or server unreachable"
+            : "Connection closed")
+      this.log("WebSocket closed", { code, wasClean, diagnostic })
 
-    websocket.onclose = async () => {
+      // TODO: If code is an error code, then emit an error event
+
       if (this.pingTimer) clearInterval(this.pingTimer)
       if (!this.isConnected) return
       this.isConnected = false
@@ -344,7 +364,10 @@ export class BridgeConnection {
       }
     } catch (error) {
       this.log("Error handling handshake:", error)
-      await this.emit(BridgeEventType.Error, `Error handling handshake: ${error}`)
+      await this.emit(
+        BridgeEventType.Error,
+        `Error handling handshake: ${error instanceof Error ? error.message : String(error)}`,
+      )
     }
   }
 
@@ -455,7 +478,10 @@ export class BridgeConnection {
       }
     } catch (error) {
       this.log("Error decrypting message:", error)
-      await this.emit(BridgeEventType.Error, `Error decrypting message: ${error}`)
+      await this.emit(
+        BridgeEventType.Error,
+        `Error decrypting message: ${error instanceof Error ? error.message : String(error)}`,
+      )
     }
   }
 
@@ -700,7 +726,10 @@ export class BridgeConnection {
       this.setupWebSocketHandlers(websocket)
     } catch (error) {
       this.log("Error connecting to bridge:", error)
-      await this.emit(BridgeEventType.Error, `Error connecting to bridge: ${error}`)
+      await this.emit(
+        BridgeEventType.Error,
+        `Error connecting to bridge: ${error instanceof Error ? error.message : String(error)}`,
+      )
       throw error
     }
   }
