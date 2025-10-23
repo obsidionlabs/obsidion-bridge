@@ -23,10 +23,7 @@ async function sha256Truncate(topic: string): Promise<Uint8Array> {
 export async function generateECDHKeyPair() {
   const privKey = secp256k1.utils.randomPrivateKey()
   const pubKey = secp256k1.getPublicKey(privKey)
-  return {
-    privateKey: privKey,
-    publicKey: pubKey,
-  }
+  return { privateKey: privKey, publicKey: pubKey }
 }
 
 export async function getSharedSecret(privateKey: Uint8Array, publicKey: Uint8Array) {

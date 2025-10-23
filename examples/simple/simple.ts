@@ -25,9 +25,7 @@ async function creatorExample() {
 
       await delay(1000)
       // Send a secure message to the joiner
-      bridge.sendMessage("greeting", {
-        message: "Hello from creator!",
-      })
+      bridge.sendMessage("greeting", { message: "Hello from creator!" })
     })
 
     bridge.onSecureMessage((message) => {
@@ -67,9 +65,7 @@ async function joinerExample(connectionString: string) {
     bridge.onConnect((reconnection: boolean) => {
       log(`${reconnection ? "Reconnected" : "Connected"} to bridge`)
       if (reconnection) {
-        bridge.sendMessage("greeting", {
-          message: "Hello I reconnected!",
-        })
+        bridge.sendMessage("greeting", { message: "Hello I reconnected!" })
       }
     })
 
@@ -77,9 +73,7 @@ async function joinerExample(connectionString: string) {
       log("Secure channel established with creator")
 
       // Send a secure message to the creator
-      bridge.sendMessage("greeting", {
-        message: "Hello from joiner!",
-      })
+      bridge.sendMessage("greeting", { message: "Hello from joiner!" })
     })
 
     bridge.onSecureMessage((message) => {

@@ -39,6 +39,6 @@ export function getRandomBytes(length: number): Uint8Array {
 
   // Fallback for non-secure environments (should not happen in production)
   throw new Error(
-    "No secure random number generator available in this environment. Make sure you're in a secure context that provides crypto APIs.",
+    "No secure random number generator available in this environment. Make sure you're in a secure context that provides crypto APIs."
   )
 }

@@ -106,11 +106,7 @@ export default function CreateBridgePage() {
         </div>
       )}
 
-      <MessagesPanel
-        messages={messages}
-        onSendMessage={handleSendMessage}
-        defaultMessage="hello from creator!"
-      />
+      <MessagesPanel messages={messages} onSendMessage={handleSendMessage} defaultMessage="hello from creator!" />
     </div>
   )
 }

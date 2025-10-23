@@ -80,10 +80,7 @@ function JoinBridgeContent() {
       })
     } catch (error: unknown) {
       console.error("Failed to join bridge:", error)
-      setMessages((prev) => [
-        ...prev,
-        `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
-      ])
+      setMessages((prev) => [...prev, `Error: ${error instanceof Error ? error.message : "Unknown error"}`])
       setJoinStatus("idle")
     }
   }
@@ -118,20 +115,12 @@ function JoinBridgeContent() {
               className="px-4 py-3 bg-foreground text-background font-medium rounded hover:bg-foreground/90 transition disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={joinStatus !== "idle"}
             >
-              {joinStatus === "joining"
-                ? "Joining..."
-                : joinStatus === "connected"
-                  ? "Connected"
-                  : "Join"}
+              {joinStatus === "joining" ? "Joining..." : joinStatus === "connected" ? "Connected" : "Join"}
             </button>
           </div>
         </div>
 
-        <MessagesPanel
-          messages={messages}
-          onSendMessage={handleSendMessage}
-          defaultMessage="hello from joiner!"
-        />
+        <MessagesPanel messages={messages} onSendMessage={handleSendMessage} defaultMessage="hello from joiner!" />
       </div>
     </Suspense>
   )

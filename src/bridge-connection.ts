@@ -88,10 +88,7 @@ export class BridgeConnection {
   }
 
   // Map to store incomplete messages
-  private incompleteMessages: Map<
-    string,
-    { chunks: string[]; expectedChunks: number; timestamp: number }
-  > = new Map()
+  private incompleteMessages: Map<string, { chunks: string[]; expectedChunks: number; timestamp: number }> = new Map()
 
   /**
    * Create a new bridge connection
@@ -155,10 +152,7 @@ export class BridgeConnection {
    * @param event The event type
    * @param args The event arguments
    */
-  private async emit<T extends BridgeEventType>(
-    event: T,
-    ...args: Parameters<BridgeEventCallback[T]>
-  ): Promise<void> {
+  private async emit<T extends BridgeEventType>(event: T, ...args: Parameters<BridgeEventCallback[T]>): Promise<void> {
     await Promise.all(
       this.eventListeners[event].map(async (listener) => {
         try {
@@ -166,7 +160,7 @@ export class BridgeConnection {
         } catch (error) {
           this.log(`Error in ${event} listener:`, error)
         }
-      }),
+      })
     )
   }
 
@@ -270,12 +264,12 @@ export class BridgeConnection {
         const parsedOrigin = data.origin ? parseOriginHeader(data.origin) : undefined
         if (parsedOrigin !== this._bridgeOrigin) {
           this.log(
-            `WARNING: Origin differs from origin in connection string. Expected ${this._bridgeOrigin} but got ${parsedOrigin}`,
+            `WARNING: Origin differs from origin in connection string. Expected ${this._bridgeOrigin} but got ${parsedOrigin}`
           )
           this.log("Ignoring received message:", data)
           this.emit(
             BridgeEventType.Error,
-            `Origin ${parsedOrigin} does not match expected origin ${this._bridgeOrigin}`,
+            `Origin ${parsedOrigin} does not match expected origin ${this._bridgeOrigin}`
           )
           return
         }
@@ -303,7 +297,7 @@ export class BridgeConnection {
             JSON.stringify({
               method: "error",
               params: { message: "Secure channel already established, ignoring handshake" },
-            }),
+            })
           )
           return
         }
@@ -316,22 +310,12 @@ export class BridgeConnection {
       this.sharedSecret = await getSharedSecret(this.keyPair.privateKey, joinerPublicKey)
 
       // Decrypt greeting
-      const greeting = await decrypt(
-        Buffer.from(data.params.greeting, "hex"),
-        this.sharedSecret,
-        this.bridgeId,
-      )
+      const greeting = await decrypt(Buffer.from(data.params.greeting, "hex"), this.sharedSecret, this.bridgeId)
       if (greeting !== "hello") throw new Error("Invalid greeting")
 
       // Send hello message back to joiner to finalize handshake
       if (this.websocket) {
-        await sendEncryptedJsonRpcRequest(
-          "hello",
-          null,
-          this.sharedSecret,
-          this.bridgeId,
-          this.websocket,
-        )
+        await sendEncryptedJsonRpcRequest("hello", null, this.sharedSecret, this.bridgeId, this.websocket)
       }
 
       // Only emit secure channel established event if it hasn't been emitted yet
@@ -413,12 +397,8 @@ export class BridgeConnection {
 
         // Verify the expected chunks count matches
         if (message.expectedChunks !== length) {
-          this.log(
-            `Chunk count mismatch for id ${id}. Expected ${message.expectedChunks}, got ${length}`,
-          )
-          throw new Error(
-            `Chunk count mismatch for id ${id}. Expected ${message.expectedChunks}, got ${length}`,
-          )
+          this.log(`Chunk count mismatch for id ${id}. Expected ${message.expectedChunks}, got ${length}`)
+          throw new Error(`Chunk count mismatch for id ${id}. Expected ${message.expectedChunks}, got ${length}`)
         }
 
         // Store the chunk at the correct index
@@ -443,10 +423,7 @@ export class BridgeConnection {
           const decompressedText = new TextDecoder().decode(decompressedData)
           const decryptedPayload = JSON.parse(decompressedText)
           this.log(`Received all chunks for chunk id ${id}, reconstructing message`)
-          const returnValue = {
-            method: decryptedJson.method,
-            params: decryptedPayload,
-          }
+          const returnValue = { method: decryptedJson.method, params: decryptedPayload }
           // delete the message from the map
           this.incompleteMessages.delete(id)
           // Notify listeners about the received message
@@ -465,17 +442,13 @@ export class BridgeConnection {
   private async handleReconnect(): Promise<void> {
     this.reconnectAttempts++
     if (this.reconnectAttempts > this.maxReconnectAttempts) {
-      this.log(
-        `WebSocket disconnected, max reconnection attempts (${this.maxReconnectAttempts}) reached`,
-      )
+      this.log(`WebSocket disconnected, max reconnection attempts (${this.maxReconnectAttempts}) reached`)
       this.resetReconnection()
       return
     }
 
     this.isReconnecting = true
-    this.log(
-      `WebSocket disconnected, attempting reconnect ${this.reconnectAttempts}/${this.maxReconnectAttempts}`,
-    )
+    this.log(`WebSocket disconnected, attempting reconnect ${this.reconnectAttempts}/${this.maxReconnectAttempts}`)
 
     let reconnectIn = 0
     // First attempt is immediate, subsequent attempts follow doubling delay pattern
@@ -545,7 +518,7 @@ export class BridgeConnection {
       this.sharedSecret!,
       // TODO: Make the nonce the JSON id of the outer message
       this.bridgeId,
-      this.websocket!,
+      this.websocket!
     )
   }
 
@@ -693,9 +666,7 @@ export class BridgeConnection {
     try {
       this.log("Connecting to bridge", url)
       // Create WebSocket connection to the bridge
-      const websocket = await (this.origin
-        ? getWebSocketClient(url, this.origin)
-        : getWebSocketClient(url))
+      const websocket = await (this.origin ? getWebSocketClient(url, this.origin) : getWebSocketClient(url))
       this.websocket = websocket
       this.setupWebSocketHandlers(websocket)
     } catch (error) {

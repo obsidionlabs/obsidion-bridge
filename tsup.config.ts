@@ -7,5 +7,5 @@ export default defineConfig(
     clean: true,
     format,
     outDir: `dist/${format}`,
-  })),
+  }))
 )
