@@ -1,4 +1,4 @@
-import { describe, test, expect, mock } from "bun:test"
+import { describe, test, expect, mock, setDefaultTimeout } from "bun:test"
 import { bytesToHex, hexToBytes } from "@noble/ciphers/utils"
 import { getSharedSecret } from "../src/encryption"
 import { Bridge, CreateOptions, JoinOptions } from "../src"
@@ -8,11 +8,14 @@ import { mockWebSocket, waitForCallback } from "./helpers"
 import debug from "debug"
 debug.enable("bridge:*")
 
+// Set default timeout for all tests to 10 seconds
+setDefaultTimeout(10000)
+
+// Default options for creating and joining a bridge
 const CREATE_OPTIONS: CreateOptions = { bridgeUrl: "wss://bridge-staging.zkpassport.id" }
 const JOIN_OPTIONS: JoinOptions = { bridgeUrl: "wss://bridge-staging.zkpassport.id" }
 
-// Mock the websocket module
-// Set USE_REAL_BRIDGE_SERVER=1 to test against the real bridge server
+// Mock the websocket module. Set USE_REAL_BRIDGE_SERVER=1 to test against a real bridge server
 if (!process.env.USE_REAL_BRIDGE_SERVER) mock.module("../src/websocket", mockWebSocket)
 
 // This is the fixed keypair for test consistency
