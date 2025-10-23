@@ -37,7 +37,7 @@ export interface JoinOptions {
 /**
  * Functional bridge interface returned by create() and join()
  */
-export interface BridgeInterface {
+export interface BridgeInterface extends Disposable {
   websocket: WebSocketClient | undefined
   connection: BridgeConnection
   onConnect: (callback: (reconnection: boolean) => void) => () => void
@@ -139,6 +139,7 @@ export class Bridge {
       getPublicKey: () => connection.getPublicKey(),
       getRemotePublicKey: () => connection.getRemotePublicKey(),
       close: () => connection.close(),
+      [Symbol.dispose]: () => connection.close(),
     }
   }
 
@@ -207,13 +208,11 @@ export class Bridge {
       getPublicKey: () => connection.getPublicKey(),
       getRemotePublicKey: () => connection.getRemotePublicKey(),
       close: () => connection.close(),
+      [Symbol.dispose]: () => connection.close(),
     }
   }
 
-  private static parseConnectionString(uri: string): {
-    domain: string
-    pubkey: string
-  } {
+  private static parseConnectionString(uri: string): { domain: string; pubkey: string } {
     const parsedUri = new URL(uri)
     const pubkey = parsedUri.pathname
     let domain = parsedUri.searchParams.get("d")

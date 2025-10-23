@@ -30,13 +30,13 @@ describe("Bridge", () => {
   test(
     "should connect to bridge and establish secure channel",
     async () => {
-      const creator = await Bridge.create(CREATE_OPTIONS)
+      await using creator = await Bridge.create(CREATE_OPTIONS)
       const onCreatorSecureChannelEstablished = waitForCallback(creator.onSecureChannelEstablished)
 
       await waitForCallback(creator.onConnect)
       expect(creator.isBridgeConnected()).toBe(true)
 
-      const joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
+      await using joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
       const onJoinerSecureChannelEstablished = waitForCallback(joiner.onSecureChannelEstablished)
 
       await waitForCallback(joiner.onConnect)
@@ -54,8 +54,8 @@ describe("Bridge", () => {
   test(
     "should use custom keypairs",
     async () => {
-      const creator = await Bridge.create({ ...CREATE_OPTIONS, keyPair: keyPairFrontend })
-      const joiner = await Bridge.join(creator.connectionString, { ...JOIN_OPTIONS, keyPair: keyPairMobile })
+      await using creator = await Bridge.create({ ...CREATE_OPTIONS, keyPair: keyPairFrontend })
+      await using joiner = await Bridge.join(creator.connectionString, { ...JOIN_OPTIONS, keyPair: keyPairMobile })
 
       await waitForCallback(joiner.onSecureChannelEstablished)
 
@@ -67,13 +67,13 @@ describe("Bridge", () => {
       )
       const sharedSecret = await getSharedSecret(keyPairFrontend.privateKey, keyPairMobile.publicKey)
       expect(bytesToHex(sharedSecret)).toBe("02bc79c530fe88c0473087e4e31f8a186704c1ddedd9cc450a00f4f3582364c1")
-    },
+    }, // creator.close() and joiner.close() are automatically called here!
     TIMEOUT
   )
 
   test("should use custom origin", async () => {
-    const creator = await Bridge.create({ ...CREATE_OPTIONS, origin: "https://localhost" })
-    const joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
+    await using creator = await Bridge.create({ ...CREATE_OPTIONS, origin: "https://localhost" })
+    await using joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
 
     expect(creator.origin).toBe("https://localhost")
     expect(creator.connectionString).toContain("d=https://localhost")
@@ -84,8 +84,8 @@ describe("Bridge", () => {
   test(
     "should fail to verify incorrect origin",
     async () => {
-      const creator = await Bridge.create({ ...CREATE_OPTIONS, origin: "https://actual-origin.com" })
-      const joiner = await Bridge.join(
+      await using creator = await Bridge.create({ ...CREATE_OPTIONS, origin: "https://actual-origin.com" })
+      await using joiner = await Bridge.join(
         creator.connectionString.replace("actual-origin.com", "wrong-origin.com"),
         JOIN_OPTIONS
       )
@@ -103,8 +103,8 @@ describe("Bridge", () => {
   test(
     "should send messages over bridge",
     async () => {
-      const creator = await Bridge.create(CREATE_OPTIONS)
-      const joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
+      await using creator = await Bridge.create(CREATE_OPTIONS)
+      await using joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
 
       // Wait for the secure channel to be established
       const creatorOnMessage = waitForCallback(creator.onSecureMessage)
@@ -131,8 +131,8 @@ describe("Bridge", () => {
   test(
     "should handle reconnect on disconnect",
     async () => {
-      const creator = await Bridge.create(CREATE_OPTIONS)
-      const joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
+      await using creator = await Bridge.create(CREATE_OPTIONS)
+      await using joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
 
       await waitForCallback(joiner.onSecureChannelEstablished)
       expect(joiner.isSecureChannelEstablished()).toBe(true)
@@ -155,13 +155,13 @@ describe("Bridge", () => {
   test(
     "should correctly set config options",
     async () => {
-      const creator1 = await Bridge.create(CREATE_OPTIONS)
+      await using creator1 = await Bridge.create(CREATE_OPTIONS)
       // @ts-expect-error private property
       expect(creator1.connection.reconnect).toBe(true)
       expect(creator1.connection.keepalive).toBe(true)
       expect(creator1.websocket?.readyState).toBe(WebSocket.CONNECTING)
 
-      const creator2 = await Bridge.create({
+      await using creator2 = await Bridge.create({
         ...CREATE_OPTIONS,
         autoconnect: false,
         reconnect: false,
@@ -172,12 +172,12 @@ describe("Bridge", () => {
       expect(creator2.connection.keepalive).toBe(false)
       expect(creator2.websocket?.readyState).not.toBe(WebSocket.CONNECTING)
 
-      const joiner1 = await Bridge.join(creator1.connectionString, JOIN_OPTIONS)
+      await using joiner1 = await Bridge.join(creator1.connectionString, JOIN_OPTIONS)
       // @ts-expect-error private property
       expect(joiner1.connection.reconnect).toBe(true)
       expect(joiner1.connection.keepalive).toBe(true)
 
-      const joiner2 = await Bridge.join(creator2.connectionString, {
+      await using joiner2 = await Bridge.join(creator2.connectionString, {
         ...JOIN_OPTIONS,
         reconnect: false,
         keepalive: false,
@@ -192,14 +192,14 @@ describe("Bridge", () => {
   test(
     "should correctly resume as joiner",
     async () => {
-      const creator = await Bridge.create(CREATE_OPTIONS)
-      const joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
+      await using creator = await Bridge.create(CREATE_OPTIONS)
+      await using joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
 
       await waitForCallback(joiner.onSecureChannelEstablished)
       expect(joiner.isSecureChannelEstablished()).toBe(true)
 
       // Create a new joiner resuming the session
-      const resumedJoiner = await Bridge.join(creator.connectionString, {
+      await using resumedJoiner = await Bridge.join(creator.connectionString, {
         ...JOIN_OPTIONS,
         resume: true,
         keyPair: joiner.getKeyPair(),
@@ -219,14 +219,14 @@ describe("Bridge", () => {
   test(
     "should correctly resume as creator",
     async () => {
-      const creator = await Bridge.create(CREATE_OPTIONS)
-      const joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
+      await using creator = await Bridge.create(CREATE_OPTIONS)
+      await using joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
 
       await waitForCallback(joiner.onSecureChannelEstablished)
       expect(joiner.isSecureChannelEstablished()).toBe(true)
 
       // Create a new creator resuming the session
-      const resumedCreator = await Bridge.create({
+      await using resumedCreator = await Bridge.create({
         ...CREATE_OPTIONS,
         resume: true,
         keyPair: creator.getKeyPair(),
@@ -245,8 +245,8 @@ describe("Bridge", () => {
   )
 
   test("payload size", async () => {
-    const creator = await Bridge.create(CREATE_OPTIONS)
-    const joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
+    await using creator = await Bridge.create(CREATE_OPTIONS)
+    await using joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
 
     if (!process.env.USE_REAL_BRIDGE_SERVER) {
       // I don't know why, but mock needs this and live fails with it
