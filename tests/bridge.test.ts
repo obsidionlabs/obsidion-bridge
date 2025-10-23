@@ -221,7 +221,7 @@ describe("Bridge", () => {
     expect(message).toEqual({ method: "resumed creator", params: {} })
   })
 
-  test.only("payload size", async () => {
+  test("payload size", async () => {
     await using creator = await Bridge.create(CREATE_OPTIONS)
     // Set up listener early to avoid race conditions
     const onCreatorSecureChannelEstablished = waitForCallback(creator.onSecureChannelEstablished)
