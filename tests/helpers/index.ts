@@ -1,8 +1,6 @@
 export { mockWebSocket } from "./mock-websocket"
 
-export const waitForCallback = <T = any>(
-  callback: (resolve: (value?: T) => void) => void,
-): Promise<T> => {
+export const waitForCallback = <T = any>(callback: (resolve: (value?: T) => void) => void): Promise<T> => {
   return new Promise<T>((resolve) => callback(resolve as (value?: T) => void))
 }
 

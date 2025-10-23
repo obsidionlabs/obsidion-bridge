@@ -14,7 +14,7 @@ export function saveBridgeSession(keyPair: KeyPair, remotePublicKey?: Uint8Array
         publicKey: Array.from(keyPair.publicKey),
         privateKey: Array.from(keyPair.privateKey),
         ...(remotePublicKey ? { remotePublicKey: Array.from(remotePublicKey) } : {}),
-      }),
+      })
     )
     console.log("Saved bridge session to session storage")
   } catch (error) {
@@ -25,9 +25,7 @@ export function saveBridgeSession(keyPair: KeyPair, remotePublicKey?: Uint8Array
 /**
  * Restore bridge session from session storage
  */
-export function restoreBridgeSession():
-  | { keyPair: KeyPair; remotePublicKey?: Uint8Array }
-  | undefined {
+export function restoreBridgeSession(): { keyPair: KeyPair; remotePublicKey?: Uint8Array } | undefined {
   try {
     const keyPairJson = sessionStorage.getItem(BRIDGE_SESSION_STORAGE_KEY)
     if (keyPairJson) {

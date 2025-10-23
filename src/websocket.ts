@@ -4,10 +4,7 @@ import type { WebSocket as WSWebSocket } from "ws"
 /**
  * Creates a WebSocket client that works in both browser and Node.js environments
  */
-export async function getWebSocketClient(
-  url: string,
-  origin?: string,
-): Promise<WebSocket | WSWebSocket> {
+export async function getWebSocketClient(url: string, origin?: string): Promise<WebSocket | WSWebSocket> {
   // Browser environment - use native WebSocket
   if (
     (typeof window !== "undefined" && window.WebSocket) ||
@@ -26,25 +23,17 @@ export async function getWebSocketClient(
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         return { default: require("ws") }
       } catch {
-        throw new Error(
-          "WebSocket implementation 'ws' not found. Please install it with: npm install ws",
-        )
+        throw new Error("WebSocket implementation 'ws' not found. Please install it with: npm install ws")
       }
     })
 
     // Get the WebSocket constructor
     const WebSocketImpl = wsModule.default || (wsModule as any).WebSocket || wsModule
 
-    return new WebSocketImpl(url, {
-      headers: {
-        Origin: origin || "nodejs",
-      },
-    }) as WSWebSocket
+    return new WebSocketImpl(url, { headers: { Origin: origin || "nodejs" } }) as WSWebSocket
   } catch (error) {
     console.error("Failed to create WebSocket client:", error)
-    throw new Error(
-      "WebSocket implementation 'ws' not found. Please install it with: npm install ws",
-    )
+    throw new Error("WebSocket implementation 'ws' not found. Please install it with: npm install ws")
   }
 }
 

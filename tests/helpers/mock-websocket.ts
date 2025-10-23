@@ -34,7 +34,7 @@ export class MockWebSocket {
       hubChannel?: string
       onConnectInterceptor?: () => void
       onSendInterceptor?: (data: string) => string | undefined
-    } = {},
+    } = {}
   ) {
     this.url = url
     this.readyState = MockWebSocket.CONNECTING
@@ -208,11 +208,7 @@ export class MockWebSocket {
   }
 
   // Static method to simulate a server-side disconnect for all connections in a channel
-  static simulateServerDisconnectForChannel(
-    channel: string,
-    code = 1006,
-    reason = "Server closed connection",
-  ) {
+  static simulateServerDisconnectForChannel(channel: string, code = 1006, reason = "Server closed connection") {
     if (MockWebSocket.hub.has(channel)) {
       const sockets = [...(MockWebSocket.hub.get(channel) || [])]
       for (const socket of sockets) {
@@ -232,12 +228,7 @@ const mockBridgeServerClientConnect = function () {
     const greeting = url.searchParams.get("greeting")
     if (pubkey && greeting) {
       setTimeout(async () => {
-        this.send(
-          JSON.stringify({
-            method: "handshake",
-            params: { pubkey, greeting },
-          }),
-        )
+        this.send(JSON.stringify({ method: "handshake", params: { pubkey, greeting } }))
       }, 10)
     }
   }

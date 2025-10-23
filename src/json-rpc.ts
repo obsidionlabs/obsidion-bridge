@@ -29,38 +29,29 @@ export function createJsonRpcRequest(method: string, params: any): JsonRpcReques
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("")
 
-  return {
-    jsonrpc: "2.0",
-    id,
-    method,
-    params,
-  }
+  return { jsonrpc: "2.0", id, method, params }
 }
 
 export async function createEncryptedJsonRpcRequest(
   method: string,
   params: any,
   sharedSecret: Uint8Array,
-  topic: string,
+  topic: string
 ): Promise<JsonRpcRequest> {
   const message = JSON.stringify({ method, params: params || {} })
   const compressed = pako.deflate(message)
-  const messageToEncrypt = JSON.stringify({
-    data: Buffer.from(compressed).toString("base64"),
-  })
+  const messageToEncrypt = JSON.stringify({ data: Buffer.from(compressed).toString("base64") })
   log(`Compressed message from ${message.length} bytes to ${messageToEncrypt.length} bytes`)
 
   const encryptedMessage = await encrypt(messageToEncrypt, sharedSecret, topic)
-  return createJsonRpcRequest("encryptedMessage", {
-    payload: Buffer.from(encryptedMessage).toString("base64"),
-  })
+  return createJsonRpcRequest("encryptedMessage", { payload: Buffer.from(encryptedMessage).toString("base64") })
 }
 
 export async function getEncryptedJsonPayload(
   method: string,
   params: any,
   sharedSecret: Uint8Array,
-  nonce: string,
+  nonce: string
 ): Promise<string[]> {
   // Split the encrypted message into chunks
   const chunks: string[] = []
@@ -74,15 +65,7 @@ export async function getEncryptedJsonPayload(
       const startIndex = i * CHUNK_SIZE
       const endIndex = Math.min(startIndex + CHUNK_SIZE, compressed.length)
       const chunk = compressed.slice(startIndex, endIndex)
-      const messageToEncrypt = JSON.stringify({
-        method,
-        params: chunk,
-        chunk: {
-          id,
-          index: i,
-          length: numChunks,
-        },
-      })
+      const messageToEncrypt = JSON.stringify({ method, params: chunk, chunk: { id, index: i, length: numChunks } })
       const encryptedMessage = await encrypt(messageToEncrypt, sharedSecret, nonce)
 
       const request = createJsonRpcRequest("encryptedMessage", {
@@ -106,7 +89,7 @@ export async function sendEncryptedJsonRpcRequest(
   params: any,
   sharedSecret: Uint8Array,
   nonce: string,
-  websocket: WebSocketClient,
+  websocket: WebSocketClient
 ): Promise<boolean> {
   try {
     const payload = await getEncryptedJsonPayload(method, params, sharedSecret, nonce)
@@ -127,9 +110,5 @@ export async function sendEncryptedJsonRpcRequest(
 }
 
 export function createJsonRpcResponse(id: string, result: any): JsonRpcResponse {
-  return {
-    jsonrpc: "2.0",
-    id,
-    result,
-  }
+  return { jsonrpc: "2.0", id, result }
 }
