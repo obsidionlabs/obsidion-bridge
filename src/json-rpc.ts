@@ -7,7 +7,7 @@ import * as pako from "pako"
 const log = debug("bridge")
 const MAX_PAYLOAD_SIZE = 32 * 1024 // 32KB (AWS API Gateway limit)
 const CHUNK_SIZE = 1024 * 16 // when to chunk uncompressed payloads
-const CHUNK_WAIT = 50 // 50ms wait between sending chunks to avoid flooding network
+const CHUNK_WAIT = 1 // 1ms wait between sending chunks to avoid flooding network
 
 export interface JsonRpcRequest {
   jsonrpc: string
@@ -24,7 +24,7 @@ export interface JsonRpcResponse {
 }
 
 export function createJsonRpcRequest(method: string, params: any): JsonRpcRequest {
-  const randBytes = getRandomBytes(16)
+  const randBytes = getRandomBytes(16) // 16 bytes = 32 hex characters
   const id = Array.from(randBytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("")
@@ -52,9 +52,10 @@ export async function getEncryptedJsonPayload(
   params: any,
   sharedSecret: Uint8Array,
   nonce: string
-): Promise<string[]> {
+): Promise<{ chunks: string[]; messageIds: string[] }> {
   // Split the encrypted message into chunks
   const chunks: string[] = []
+  const messageIds: string[] = []
   if (params) {
     const compressed = Buffer.from(pako.deflate(JSON.stringify(params))).toString("base64")
     const numChunks = Math.ceil(compressed.length / CHUNK_SIZE)
@@ -71,6 +72,7 @@ export async function getEncryptedJsonPayload(
       const request = createJsonRpcRequest("encryptedMessage", {
         payload: Buffer.from(encryptedMessage).toString("base64"),
       })
+      messageIds.push(request.id)
       chunks.push(JSON.stringify(request))
     }
   } else {
@@ -79,9 +81,10 @@ export async function getEncryptedJsonPayload(
     const request = createJsonRpcRequest("encryptedMessage", {
       payload: Buffer.from(encryptedMessage).toString("base64"),
     })
+    messageIds.push(request.id)
     chunks.push(JSON.stringify(request))
   }
-  return chunks
+  return { chunks, messageIds }
 }
 
 export async function sendEncryptedJsonRpcRequest(
@@ -90,22 +93,22 @@ export async function sendEncryptedJsonRpcRequest(
   sharedSecret: Uint8Array,
   nonce: string,
   websocket: WebSocketClient
-): Promise<boolean> {
+): Promise<{ success: boolean; messageIds: string[] }> {
   try {
-    const payload = await getEncryptedJsonPayload(method, params, sharedSecret, nonce)
-    for (const payloadChunk of payload) {
+    const { chunks, messageIds } = await getEncryptedJsonPayload(method, params, sharedSecret, nonce)
+    for (const payloadChunk of chunks) {
       if (payloadChunk.length > MAX_PAYLOAD_SIZE) {
         // handle chunking payload
         throw new Error(`Payload exceeds max size of ${MAX_PAYLOAD_SIZE} bytes`)
       }
       websocket.send(payloadChunk)
-      // avoid flooding network - wait 50ms between sending chunks
-      await new Promise((resolve) => setTimeout(resolve, CHUNK_WAIT))
+      // avoid flooding network - wait 1ms between sending multiple chunks
+      if (chunks.length > 1) await new Promise((resolve) => setTimeout(resolve, CHUNK_WAIT))
     }
-    return true
+    return { success: true, messageIds }
   } catch (error) {
     log("Error sending encrypted message:", error)
-    return false
+    return { success: false, messageIds: [] }
   }
 }
 

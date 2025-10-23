@@ -76,6 +76,7 @@ export class BridgeConnection {
   private isConnected = false
   private resumedSession = false
   private bridgeUrl?: string
+  private validMessagesReceived = 0
 
   // Event handlers
   private eventListeners: {
@@ -89,6 +90,9 @@ export class BridgeConnection {
 
   // Map to store incomplete messages
   private incompleteMessages: Map<string, { chunks: string[]; expectedChunks: number; timestamp: number }> = new Map()
+
+  // Set to track seen JSON RPC message IDs (both sent and received)
+  private seenMessageIds: Set<string> = new Set()
 
   /**
    * Create a new bridge connection
@@ -238,6 +242,21 @@ export class BridgeConnection {
    * Handle WebSocket messages based on message type
    */
   private async handleWebSocketMessage(data: any): Promise<void> {
+    // Check for missing message id
+    if (!data.id) {
+      this.log(`Ignoring message with missing id`)
+      console.log(data)
+      return
+    }
+    // Check for duplicate message id
+    if (this.seenMessageIds.has(data.id)) {
+      this.log(`Ignoring message with duplicate id: ${data.id}`)
+      return
+    }
+    // Track this message ID
+    this.seenMessageIds.add(data.id)
+    this.validMessagesReceived += 1
+
     // Handle handshake message (for creator role)
     if (this.role === "creator" && data.method === "handshake") {
       // TODO: This may be the ideal behaviour rather than responding with an error
@@ -315,7 +334,15 @@ export class BridgeConnection {
 
       // Send hello message back to joiner to finalize handshake
       if (this.websocket) {
-        await sendEncryptedJsonRpcRequest("hello", null, this.sharedSecret, this.bridgeId, this.websocket)
+        const result = await sendEncryptedJsonRpcRequest(
+          "hello",
+          null,
+          this.sharedSecret,
+          this.bridgeId,
+          this.websocket
+        )
+        // Track the message IDs we sent
+        result.messageIds.forEach((id) => this.seenMessageIds.add(id))
       }
 
       // Only emit secure channel established event if it hasn't been emitted yet
@@ -512,7 +539,7 @@ export class BridgeConnection {
       await this.emit(BridgeEventType.Error, "Cannot send message: Secure channel not established")
       return false
     }
-    return sendEncryptedJsonRpcRequest(
+    const result = await sendEncryptedJsonRpcRequest(
       method,
       params,
       this.sharedSecret!,
@@ -520,6 +547,9 @@ export class BridgeConnection {
       this.bridgeId,
       this.websocket!
     )
+    // Track the message IDs we sent
+    result.messageIds.forEach((id) => this.seenMessageIds.add(id))
+    return result.success
   }
 
   /**

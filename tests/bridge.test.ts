@@ -2,7 +2,7 @@ import { describe, test, expect, mock, setDefaultTimeout } from "bun:test"
 import { bytesToHex, hexToBytes } from "@noble/ciphers/utils"
 import { getSharedSecret } from "../src/encryption"
 import { Bridge, CreateOptions, JoinOptions } from "../src"
-import { mockWebSocket, waitForCallback } from "./helpers"
+import { mockWebSocket, waitForCallback, delay } from "./helpers"
 
 // Enable debug logging for tests
 import debug from "debug"
@@ -261,4 +261,45 @@ describe("Bridge", () => {
     const message2 = await creatorOnMessage
     expect(message2).toEqual({ method: "big_payload", params: { payload } })
   }, 20000)
+
+  test("should ignore duplicate message ids", async () => {
+    await using creator = await Bridge.create(CREATE_OPTIONS)
+    const onCreatorSecureChannelEstablished = waitForCallback(creator.onSecureChannelEstablished)
+    await waitForCallback(creator.onConnect)
+
+    await using joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
+    await waitForCallback(joiner.onSecureChannelEstablished)
+    await onCreatorSecureChannelEstablished
+    // Get the handshake message id so we can ignore it later
+    // @ts-expect-error private property
+    const handshakeMessageId = Array.from(creator.connection.seenMessageIds)[0]
+
+    // Send a message
+    const joinerOnMessage = waitForCallback(joiner.onSecureMessage)
+    await creator.sendMessage("hello, world!", { foo: "bar" })
+    const message = await joinerOnMessage
+
+    // Get the message id so we can send a duplicate
+    // @ts-expect-error private property
+    const duplicateId = Array.from(creator.connection.seenMessageIds).find((id) => id !== handshakeMessageId)
+    expect(message).toEqual({ method: "hello, world!", params: { foo: "bar" } })
+    // @ts-expect-error private property
+    expect(joiner.connection.validMessagesReceived).toBe(2)
+
+    // Manually send a message with a duplicate id
+    const duplicateMessage = JSON.stringify({
+      jsonrpc: "2.0",
+      id: duplicateId,
+      method: "foobar",
+      params: { foo: "bar" },
+    })
+    creator.websocket!.send(duplicateMessage)
+
+    // Wait to ensure the message would have been processed if it wasn't ignored
+    // TODO: Improve the design of this test to avoid the delay
+    await delay(1000)
+    // The duplicate message should have been ignored, so validMessagesReceived should still be 2
+    // @ts-expect-error private property
+    expect(joiner.connection.validMessagesReceived).toBe(2)
+  })
 })

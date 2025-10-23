@@ -228,7 +228,7 @@ const mockBridgeServerClientConnect = function () {
     const greeting = url.searchParams.get("greeting")
     if (pubkey && greeting) {
       setTimeout(async () => {
-        this.send(JSON.stringify({ method: "handshake", params: { pubkey, greeting } }))
+        this.send(JSON.stringify({ jsonrpc: "2.0", id: "1", method: "handshake", params: { pubkey, greeting } }))
       }, 10)
     }
   }
