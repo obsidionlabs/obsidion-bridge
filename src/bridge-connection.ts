@@ -242,6 +242,14 @@ export class BridgeConnection {
    * Handle WebSocket messages based on message type
    */
   private async handleWebSocketMessage(data: any): Promise<void> {
+    // Respond to ping messages
+    if (data.method === "ping") {
+      this.log("Received ping message, responding with pong")
+      this.websocket?.send(JSON.stringify({ method: "pong", params: {} }))
+    }
+    // Ignore pong messages
+    if (data.method === "pong") return
+
     // Check for missing message id
     if (!data.id) {
       this.log(`Ignoring message with missing id`)
@@ -266,12 +274,6 @@ export class BridgeConnection {
       // }
       this.log("Processing handshake message")
       await this.handleHandshake(data)
-    }
-
-    // Respond to ping messages
-    if (data.method === "ping") {
-      this.log("Received ping message, responding with pong")
-      this.websocket?.send(JSON.stringify({ method: "pong", params: {} }))
     }
 
     // Handle encrypted messages
@@ -399,8 +401,7 @@ export class BridgeConnection {
             try {
               decryptedJson.params = JSON.parse(decryptedJson.params)
             } catch {
-              // lint wants something here - i'd leave this empty tbh
-              this.log("No JSON parsing needed")
+              // Ignore error
             }
           }
           // Notify listeners about the received message
