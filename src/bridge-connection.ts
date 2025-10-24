@@ -246,6 +246,7 @@ export class BridgeConnection {
     if (data.method === "ping") {
       this.log("Received ping message, responding with pong")
       this.websocket?.send(JSON.stringify({ method: "pong", params: {} }))
+      return
     }
     // Ignore pong messages
     if (data.method === "pong") return
