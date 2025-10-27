@@ -243,7 +243,7 @@ const mockBridgeServerClientConnect = function () {
         setTimeout(async () => {
           this.send(decodedMessage)
         }, 10)
-      } catch (error) {
+      } catch {
         // Simulate server disconnect on error
         setTimeout(() => {
           this.simulateServerDisconnect(1008, "Invalid message on connect")
