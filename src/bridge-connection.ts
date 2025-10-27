@@ -1,52 +1,13 @@
+import debug from "debug"
+import { inflate } from "pako"
 import { bytesToHex } from "@noble/ciphers/utils"
-import { getRandomBytes } from "./crypto"
-import { decrypt, encrypt, getSharedSecret, KeyPair } from "./encryption"
+import { decrypt, encrypt, getSharedSecret } from "./encryption"
 import { sendEncryptedJsonRpcRequest } from "./json-rpc"
 import { getWebSocketClient, WebSocketClient } from "./websocket"
-import debug from "debug"
-import * as pako from "pako"
-
-const DEFAULT_MAX_RECONNECT_ATTEMPTS = 10
-
-/**
- * Bridge event types
- */
-export enum BridgeEventType {
-  Connected = "connected",
-  SecureChannelEstablished = "secure-channel-established",
-  MessageReceived = "message-received",
-  ChunkRecieved = "chunk-received",
-  Error = "error",
-  Disconnected = "disconnected",
-}
-
-/**
- * Bridge event callback types
- */
-export type BridgeEventCallback = {
-  [BridgeEventType.Connected]: (reconnection: boolean) => void
-  [BridgeEventType.SecureChannelEstablished]: () => void
-  [BridgeEventType.MessageReceived]: (message: any) => void
-  [BridgeEventType.ChunkRecieved]: (message: any) => void
-  [BridgeEventType.Error]: (error: string) => void
-  [BridgeEventType.Disconnected]: () => void
-}
-
-/**
- * Interface for bridge connection options
- */
-export interface BridgeOptions {
-  role: "creator" | "joiner"
-  keyPair: KeyPair
-  bridgeId?: string
-  reconnect?: boolean
-  reconnectAttempts?: number
-  keepalive?: boolean
-  origin?: string
-  domain?: string
-  pingInterval?: number
-  bridgeUrl?: string
-}
+import { parseOriginHeader, generateRandomId } from "./utils"
+import { DEFAULT_MAX_RECONNECT_ATTEMPTS } from "./constants"
+import type { BridgeEventCallback, BridgeOptions, KeyPair } from "./types"
+import { BridgeEventType, BridgeDisconnectedEvent as DisconnectedEvent, FailedToConnectEvent } from "./types"
 
 /**
  * BridgeConnection implementation
@@ -77,15 +38,18 @@ export class BridgeConnection {
   private resumedSession = false
   private bridgeUrl?: string
   private validMessagesReceived = 0
+  private lastMessageTimestamp: number = 0
 
   // Event handlers
   private eventListeners: {
     [BridgeEventType.Connected]: Array<(reconnection: boolean) => void>
     [BridgeEventType.SecureChannelEstablished]: Array<() => void>
+    [BridgeEventType.RawMessageReceived]: Array<(message: any) => void>
     [BridgeEventType.MessageReceived]: Array<(message: any) => void>
     [BridgeEventType.ChunkRecieved]: Array<(message: any) => void>
     [BridgeEventType.Error]: Array<(error: string) => void>
-    [BridgeEventType.Disconnected]: Array<() => void>
+    [BridgeEventType.FailedToConnect]: Array<(event: FailedToConnectEvent) => void>
+    [BridgeEventType.Disconnected]: Array<(event: DisconnectedEvent) => void>
   }
 
   // Map to store incomplete messages
@@ -103,7 +67,7 @@ export class BridgeConnection {
     this.origin = options.origin
     this._bridgeOrigin = options.domain
     this.log = debug(`bridge:${this.role}`)
-    this.bridgeId = options.bridgeId || Buffer.from(getRandomBytes(16)).toString("hex")
+    this.bridgeId = options.bridgeId || generateRandomId(16)
     this.keyPair = options.keyPair
     this.reconnect = options.reconnect ?? true
     this.keepalive = options.keepalive ?? true
@@ -115,9 +79,11 @@ export class BridgeConnection {
     this.eventListeners = {
       [BridgeEventType.Connected]: [],
       [BridgeEventType.SecureChannelEstablished]: [],
+      [BridgeEventType.RawMessageReceived]: [],
       [BridgeEventType.MessageReceived]: [],
       [BridgeEventType.ChunkRecieved]: [],
       [BridgeEventType.Error]: [],
+      [BridgeEventType.FailedToConnect]: [],
       [BridgeEventType.Disconnected]: [],
     }
   }
@@ -184,11 +150,27 @@ export class BridgeConnection {
       // Emit the connected event
       if (this.isReconnecting) {
         this.log("Reconnected to bridge")
+
+        // Reset state relating to reconnection
         this.resetReconnection()
+
+        // Request message replay if we have a last message timestamp
+        if (this.lastMessageTimestamp > 0 && this.websocket) {
+          const replayTimestamp = this.lastMessageTimestamp - 1000
+          this.log(`Requesting message replay starting from ${replayTimestamp}`)
+          this.websocket.send(JSON.stringify({ method: "replay", params: { timestamp: replayTimestamp } }))
+        }
+        // Emit the connected event with reconnection flag set to true
         await this.emit(BridgeEventType.Connected, true)
       } else {
         this.log("Connected to bridge")
+
+        // Set initial timestamp for requesting message replay if needed
+        if (this.lastMessageTimestamp === 0) this.lastMessageTimestamp = Date.now()
+
+        // Emit the connected event
         await this.emit(BridgeEventType.Connected, false)
+
         // Fire the initial secure channel established event if this session was resumed
         if (this.resumedSession) {
           this.log("Resumed session, emitting secure channel established event")
@@ -198,43 +180,67 @@ export class BridgeConnection {
     }
 
     websocket.onmessage = async (event: any) => {
-      // this.log("Received message:", event.data)
+      // Emit the raw message received event
+      await this.emit(BridgeEventType.RawMessageReceived, event.data)
+
       try {
         const data = JSON.parse(event.data)
         await this.handleWebSocketMessage(data)
       } catch (error) {
         this.log("Error parsing message:", error)
-        await this.emit(BridgeEventType.Error, `Error parsing message: ${error}`)
+        await this.emit(
+          BridgeEventType.Error,
+          `Error parsing message: ${error instanceof Error ? error.message : String(error)}`
+        )
       }
     }
 
-    websocket.onerror = async (error: any) => {
-      this.log("WebSocket Error:", error)
-      await this.emit(BridgeEventType.Error, `WebSocket error: ${error}`)
+    websocket.onclose = async (event: CloseEvent) => {
+      const { code, reason, wasClean } = event
+      console.log("[websocket.onclose]", { code, reason, wasClean, readyState: websocket.readyState })
 
-      if (this.reconnect && !this.isConnected) {
-        await this.handleReconnect()
-      }
-    }
-
-    websocket.onclose = async () => {
+      // Clear the ping timer if it is set
       if (this.pingTimer) clearInterval(this.pingTimer)
-      if (!this.isConnected) return
-      this.isConnected = false
 
-      this.log("WebSocket closed")
+      // If connected then fire a Disconnected event
+      if (this.isConnected) {
+        const disconnectedEvent = new DisconnectedEvent({
+          code: event.code,
+          reason: event.reason,
+          wasConnected: this.isConnected,
+          wasIntentionalClose: this.intentionalClose,
+          willReconnect: !this.intentionalClose && this.isConnected && this.reconnect,
+          event: event,
+        })
+        await this.emit(BridgeEventType.Disconnected, disconnectedEvent)
+      }
 
-      // Emit the disconnected event so listeners can respond
-      await this.emit(BridgeEventType.Disconnected)
-
+      // If the close was intentional then cleanup and return
       if (this.intentionalClose) {
-        this.log("Intentional close, not attempting to reconnect")
+        this.log("Intentional close, not attempting reconnect")
+        this._handleCleanup()
         return
       }
 
-      if (this.reconnect) {
-        await this.handleReconnect()
+      // If not yet connected then fire a FailedToConnect event and return
+      // This is often due to a network or DNS error
+      if (!this.isConnected) {
+        const isConnectionError = !this.isConnected && !this.intentionalClose
+        if (isConnectionError) {
+          const failedToConnectEvent = new FailedToConnectEvent({
+            code: event.code,
+            reason: event.reason,
+            event: event,
+          })
+          await this.emit(BridgeEventType.FailedToConnect, failedToConnectEvent)
+        }
+        return
       }
+
+      // This point is only reached if the connection was established prior to closing and .cleanup() was not called
+      this.log("WebSocket closed")
+      this.isConnected = false
+      if (this.reconnect) await this.handleReconnect()
     }
   }
 
@@ -257,6 +263,7 @@ export class BridgeConnection {
       console.log(data)
       return
     }
+
     // Check for duplicate message id
     if (this.seenMessageIds.has(data.id)) {
       this.log(`Ignoring message with duplicate id: ${data.id}`)
@@ -265,6 +272,9 @@ export class BridgeConnection {
     // Track this message ID
     this.seenMessageIds.add(data.id)
     this.validMessagesReceived += 1
+
+    // Record timestamp of when the last message was received
+    this.lastMessageTimestamp = Date.now()
 
     // Handle handshake message (for creator role)
     if (this.role === "creator" && data.method === "handshake") {
@@ -297,6 +307,7 @@ export class BridgeConnection {
         }
       }
 
+      // Call handler for encrypted messages
       await this.handleEncryptedMessage(data)
     }
   }
@@ -329,7 +340,7 @@ export class BridgeConnection {
       this.remotePublicKey = joinerPublicKey
 
       // Compute shared secret
-      this.sharedSecret = await getSharedSecret(this.keyPair.privateKey, joinerPublicKey)
+      this.sharedSecret = getSharedSecret(this.keyPair.privateKey, joinerPublicKey)
 
       // Decrypt greeting
       const greeting = await decrypt(Buffer.from(data.params.greeting, "hex"), this.sharedSecret, this.bridgeId)
@@ -358,7 +369,10 @@ export class BridgeConnection {
       }
     } catch (error) {
       this.log("Error handling handshake:", error)
-      await this.emit(BridgeEventType.Error, `Error handling handshake: ${error}`)
+      await this.emit(
+        BridgeEventType.Error,
+        `Error handling handshake: ${error instanceof Error ? error.message : String(error)}`
+      )
     }
   }
 
@@ -385,7 +399,7 @@ export class BridgeConnection {
             if (decryptedJson.params && decryptedJson.params.length > 0) {
               this.log(`Received compressed single-part message`)
               const compressedData = Buffer.from(decryptedJson.params, "base64")
-              const decompressedData = pako.inflate(compressedData)
+              const decompressedData = inflate(compressedData)
               const decompressedText = new TextDecoder().decode(decompressedData)
               decryptedJson.params = JSON.parse(decompressedText)
               delete decryptedJson.chunk
@@ -448,7 +462,7 @@ export class BridgeConnection {
           // recompose the chunks into the message
           const fullMessage = message.chunks.join("")
           const compressedMessage = Buffer.from(fullMessage, "base64")
-          const decompressedData = pako.inflate(compressedMessage)
+          const decompressedData = inflate(compressedMessage)
           const decompressedText = new TextDecoder().decode(decompressedData)
           const decryptedPayload = JSON.parse(decompressedText)
           this.log(`Received all chunks for chunk id ${id}, reconstructing message`)
@@ -461,7 +475,10 @@ export class BridgeConnection {
       }
     } catch (error) {
       this.log("Error decrypting message:", error)
-      await this.emit(BridgeEventType.Error, `Error decrypting message: ${error}`)
+      await this.emit(
+        BridgeEventType.Error,
+        `Error decrypting message: ${error instanceof Error ? error.message : String(error)}`
+      )
     }
   }
 
@@ -571,6 +588,14 @@ export class BridgeConnection {
   }
 
   /**
+   * Register a callback for when a raw message is received
+   * @returns Function to unsubscribe from the event
+   */
+  public onRawMessage(callback: (message: any) => void): () => void {
+    return this.on(BridgeEventType.RawMessageReceived, callback)
+  }
+
+  /**
    * Register a callback for when a message is received
    * @returns Function to unsubscribe from the event
    */
@@ -587,11 +612,19 @@ export class BridgeConnection {
   }
 
   /**
+   * Register a callback for when the bridge fails to connect
+   * @returns Function to unsubscribe from the event
+   */
+  public onFailedToConnect(callback: (event: FailedToConnectEvent) => void): () => void {
+    return this.on(BridgeEventType.FailedToConnect, (event: FailedToConnectEvent) => callback(event))
+  }
+
+  /**
    * Register a callback for when the bridge disconnects
    * @returns Function to unsubscribe from the event
    */
-  public onDisconnect(callback: () => void): () => void {
-    return this.on(BridgeEventType.Disconnected, callback)
+  public onDisconnect(callback: (event: DisconnectedEvent) => void): () => void {
+    return this.on(BridgeEventType.Disconnected, (event: DisconnectedEvent) => callback(event))
   }
 
   /**
@@ -604,11 +637,11 @@ export class BridgeConnection {
   /**
    * Compute the shared secret
    */
-  public async computeSharedSecret(): Promise<void> {
+  public computeSharedSecret(): void {
     if (!this.remotePublicKey) {
       throw new Error("Remote public key not set")
     }
-    this.sharedSecret = await getSharedSecret(this.keyPair.privateKey, this.remotePublicKey)
+    this.sharedSecret = getSharedSecret(this.keyPair.privateKey, this.remotePublicKey)
   }
 
   /**
@@ -630,13 +663,13 @@ export class BridgeConnection {
    */
   public async _getWsConnectionUrl(): Promise<string> {
     if (this.role === "creator") {
-      return `${this.bridgeUrl}?topic=${this.getBridgeId()}`
+      return `${this.bridgeUrl}?id=${this.getBridgeId()}`
     } else {
       if (!this.isSecureChannelEstablished()) {
         const greeting = await this.createEncryptedGreeting()
-        return `${this.bridgeUrl}?topic=${this.getBridgeId()}&pubkey=${this.getPublicKey()}&greeting=${greeting}`
+        return `${this.bridgeUrl}?id=${this.getBridgeId()}&pubkey=${this.getPublicKey()}&greeting=${greeting}`
       } else {
-        return `${this.bridgeUrl}?topic=${this.getBridgeId()}`
+        return `${this.bridgeUrl}?id=${this.getBridgeId()}`
       }
     }
   }
@@ -703,57 +736,55 @@ export class BridgeConnection {
       this.setupWebSocketHandlers(websocket)
     } catch (error) {
       this.log("Error connecting to bridge:", error)
-      await this.emit(BridgeEventType.Error, `Error connecting to bridge: ${error}`)
+      await this.emit(
+        BridgeEventType.Error,
+        `Error connecting to bridge: ${error instanceof Error ? error.message : String(error)}`
+      )
       throw error
     }
   }
 
-  /**
-   * Close the bridge and clear all event listeners
-   */
-  public close(): void {
-    this.log("Closing the bridge")
-    this.intentionalClose = true
+  private _handleCleanup(): void {
+    this.log("Cleaning up event listeners and associated state")
 
-    // Close the websocket
-    if (this.websocket) {
-      this.websocket.close(1000, "Connection closed by user")
-      // Remove all event handlers from the websocket
-      this.websocket.onopen = null
-      this.websocket.onmessage = null
-      this.websocket.onerror = null
-      this.websocket.onclose = null
-    }
-    this.emit(BridgeEventType.Disconnected)
-
-    this.websocket = undefined
-    this.secureChannelEstablished = false
-    this.sharedSecret = undefined
-    this.remotePublicKey = undefined
-
+    // Cleanup timers
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
     this.reconnectTimer = undefined
     if (this.pingTimer) clearInterval(this.pingTimer)
     this.pingTimer = undefined
 
+    // Clear all event listeners from the websocket
+    if (this.websocket) {
+      this.websocket.onopen = null
+      this.websocket.onmessage = null
+      this.websocket.onerror = null
+      this.websocket.onclose = null
+      this.websocket = undefined
+    }
+    // Cleanup state variables
+    this.secureChannelEstablished = false
+    this.sharedSecret = undefined
+    this.remotePublicKey = undefined
+
     // Clear all event listeners
     this.eventListeners = {
       [BridgeEventType.Connected]: [],
       [BridgeEventType.SecureChannelEstablished]: [],
+      [BridgeEventType.RawMessageReceived]: [],
       [BridgeEventType.MessageReceived]: [],
       [BridgeEventType.ChunkRecieved]: [],
       [BridgeEventType.Error]: [],
+      [BridgeEventType.FailedToConnect]: [],
       [BridgeEventType.Disconnected]: [],
     }
   }
-}
 
-// Return just the scheme and host (excluding port)
-function parseOriginHeader(origin: string): string | undefined {
-  try {
-    const parsed = new URL(origin)
-    return `${parsed.protocol}//${parsed.host.split(":")[0]}`
-  } catch {
-    return origin
+  /**
+   * Close the bridge and cleanup all event listeners and associated state
+   */
+  public cleanup(): void {
+    this.log("Closing connection to bridge")
+    this.intentionalClose = true
+    this.websocket?.close(1000, "Connection closed by user")
   }
 }

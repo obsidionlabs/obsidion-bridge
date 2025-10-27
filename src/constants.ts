@@ -1,0 +1,1 @@
+export const DEFAULT_MAX_RECONNECT_ATTEMPTS = 10

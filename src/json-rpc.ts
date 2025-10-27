@@ -1,8 +1,8 @@
-import { getRandomBytes } from "./crypto"
 import { encrypt } from "./encryption"
 import { WebSocketClient } from "./websocket"
+import { generateRandomId } from "./utils"
 import debug from "debug"
-import * as pako from "pako"
+import { deflate } from "pako"
 
 const log = debug("bridge")
 const MAX_PAYLOAD_SIZE = 32 * 1024 // 32KB (AWS API Gateway limit)
@@ -24,10 +24,7 @@ export interface JsonRpcResponse {
 }
 
 export function createJsonRpcRequest(method: string, params: any): JsonRpcRequest {
-  const randBytes = getRandomBytes(16) // 16 bytes = 32 hex characters
-  const id = Array.from(randBytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")
+  const id = generateRandomId(16) // 16 bytes = 32 hex characters
 
   return { jsonrpc: "2.0", id, method, params }
 }
@@ -36,14 +33,14 @@ export async function createEncryptedJsonRpcRequest(
   method: string,
   params: any,
   sharedSecret: Uint8Array,
-  topic: string
+  nonce: string
 ): Promise<JsonRpcRequest> {
   const message = JSON.stringify({ method, params: params || {} })
-  const compressed = pako.deflate(message)
+  const compressed = deflate(message)
   const messageToEncrypt = JSON.stringify({ data: Buffer.from(compressed).toString("base64") })
   log(`Compressed message from ${message.length} bytes to ${messageToEncrypt.length} bytes`)
 
-  const encryptedMessage = await encrypt(messageToEncrypt, sharedSecret, topic)
+  const encryptedMessage = await encrypt(messageToEncrypt, sharedSecret, nonce)
   return createJsonRpcRequest("encryptedMessage", { payload: Buffer.from(encryptedMessage).toString("base64") })
 }
 
@@ -57,11 +54,9 @@ export async function getEncryptedJsonPayload(
   const chunks: string[] = []
   const messageIds: string[] = []
   if (params) {
-    const compressed = Buffer.from(pako.deflate(JSON.stringify(params))).toString("base64")
+    const compressed = Buffer.from(deflate(JSON.stringify(params))).toString("base64")
     const numChunks = Math.ceil(compressed.length / CHUNK_SIZE)
-    const id = Array.from(getRandomBytes(16))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("")
+    const id = generateRandomId(16)
     for (let i = 0; i < numChunks; i++) {
       const startIndex = i * CHUNK_SIZE
       const endIndex = Math.min(startIndex + CHUNK_SIZE, compressed.length)

@@ -251,12 +251,12 @@ const mockBridgeServerMessageRelay = function (data: string): string | undefined
 export const mockWebSocket = () => {
   return {
     getWebSocketClient: jest.fn((url: string, origin: string) => {
-      // Extract topic/bridgeId from url for use in MockWebSocket
+      // Extract bridge id from url for use in MockWebSocket
       const urlObj = new URL(url)
-      const topicFromUrl = urlObj.searchParams.get("topic") || ""
+      const bridgeIdFromUrl = urlObj.searchParams.get("id") || urlObj.searchParams.get("topic") || ""
       const websocket = new MockWebSocket(url, {
         headers: { Origin: origin },
-        hubChannel: topicFromUrl, // Use topic from URL
+        hubChannel: bridgeIdFromUrl, // Use id from URL
         onConnectInterceptor: mockBridgeServerClientConnect,
         onSendInterceptor: mockBridgeServerMessageRelay,
       })

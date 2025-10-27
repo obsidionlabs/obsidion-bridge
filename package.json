@@ -17,7 +17,7 @@
   "scripts": {
     "test": "bun test tests/*.test.ts",
     "coverage": "bun test tests/*.test.ts --coverage",
-    "check": "tsc --noEmit && prettier -c . && eslint src tests examples --ext .ts",
+    "check": "tsc --noEmit && prettier -c src tests && eslint src tests examples --ext .ts",
     "format": "prettier -c -w .",
     "build": "rimraf ./dist && tsup",
     "prepublishOnly": "bun run format && bun run check && bun run test && bun run build"
