@@ -648,26 +648,33 @@ export class BridgeConnection {
    * Create an encrypted greeting
    */
   public async createEncryptedGreeting(): Promise<string> {
-    if (!this.sharedSecret) {
-      throw new Error("Shared secret not available")
-    }
+    if (!this.sharedSecret) throw new Error("Shared secret not available")
     const greeting = await encrypt("hello", this.sharedSecret, this.bridgeId)
     return Buffer.from(greeting).toString("hex")
   }
 
   /**
    * Get the WebSocket connection URL for a joiner
-   * NOTE: If the pubkey param is provided in the WS connection URI,
-   *       the bridge server will automatically send a handshake on connect
+   * NOTE: If the `moc` (message on connect) param is provided in the WS connection URI,
+   *       the bridge server will automatically base64 decode and broadcast it to the bridge on connect
    * @returns The WebSocket connection URL
    */
   public async _getWsConnectionUrl(): Promise<string> {
     if (this.role === "creator") {
       return `${this.bridgeUrl}?id=${this.getBridgeId()}`
     } else {
+      // Add a moc (message on connect) parameter if the secure channel is not established yet
       if (!this.isSecureChannelEstablished()) {
         const greeting = await this.createEncryptedGreeting()
-        return `${this.bridgeUrl}?id=${this.getBridgeId()}&pubkey=${this.getPublicKey()}&greeting=${greeting}`
+        // Create handshake message and encode as base64 for `moc` parameter
+        const handshakeMessage = JSON.stringify({
+          jsonrpc: "2.0",
+          id: generateRandomId(16),
+          method: "handshake",
+          params: { pubkey: this.getPublicKey(), greeting: greeting },
+        })
+        const moc = Buffer.from(handshakeMessage).toString("base64")
+        return `${this.bridgeUrl}?id=${this.getBridgeId()}&moc=${encodeURIComponent(moc)}`
       } else {
         return `${this.bridgeUrl}?id=${this.getBridgeId()}`
       }
