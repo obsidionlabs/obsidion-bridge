@@ -2,10 +2,12 @@
 import { useEffect, useState, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 // import { Bridge, BridgeInterface } from "@obsidion/bridge"
-import { Bridge, BridgeInterface } from "../../../../.."
-import { restoreBridgeSession, saveBridgeSession } from "../../lib/session"
+import { Bridge, BridgeInterface } from "../../../../../src/bridge"
+import { restoreBridgeSession, saveBridgeSession, clearBridgeSession } from "../../lib/session"
 import { MessagesPanel } from "../components/MessagesPanel"
+import { CopyIcon } from "../components/CopyIcon"
 import debug from "debug"
+import { FailedToConnectEvent } from "../../../../../src/types"
 
 debug.enable("bridge*")
 
@@ -36,12 +38,19 @@ function JoinBridgeContent() {
   const handleJoinBridge = async (connectionString: string) => {
     setJoinStatus("joining")
     try {
-      // Restore bridge session data (keypair) if available
+      // Resume bridge session if available
       const savedBridgeSession = restoreBridgeSession()
+      const resume = savedBridgeSession ? true : false
+      if (resume) {
+        setMessages((prev) => [...prev, "Resuming bridge session"])
+      }
+      console.log("savedBridgeSession", savedBridgeSession)
+
       // Join bridge (and resume using saved bridge session if available)
       const bridge = await Bridge.join(connectionString, {
         keyPair: savedBridgeSession?.keyPair,
-        resume: !!savedBridgeSession,
+        resume,
+        bridgeUrl: "wss://bridge-staging.zkpassport.id",
       })
       setBridge(bridge)
       setJoinStatus("connected")
@@ -57,16 +66,24 @@ function JoinBridgeContent() {
         saveBridgeSession(bridge.getKeyPair())
       })
 
-      // Listen for messages
+      bridge.onRawMessage((message: unknown) => {
+        setMessages((prev) => [...prev, `Raw message received: ${message}`])
+        console.log("Raw message received:", message)
+      })
+
       bridge.onSecureMessage((message: unknown) => {
-        setMessages((prev) => [...prev, `Received: ${JSON.stringify(message)}`])
+        setMessages((prev) => [...prev, `Message received: ${JSON.stringify(message)}`])
         console.log("Message received:", message)
       })
 
-      // Listen for connection events
       bridge.onConnect((reconnection: boolean) => {
         setMessages((prev) => [...prev, `${reconnection ? "Reconnected" : "Connected"} to bridge`])
         setJoinStatus("connected")
+      })
+
+      bridge.onFailedToConnect((event: FailedToConnectEvent) => {
+        setMessages((prev) => [...prev, `Failed to connect to bridge: ${event.code} "${event.reason}"`])
+        setJoinStatus("idle")
       })
 
       bridge.onDisconnect(() => {
@@ -85,13 +102,50 @@ function JoinBridgeContent() {
     }
   }
 
-  const handleSendMessage = (message: string) => {
+  const handleSendMessage = (method: string) => {
     if (bridge && bridge.isBridgeConnected()) {
-      bridge.sendMessage(message)
-      setMessages((prev) => [...prev, `Sent: ${message}`])
+      bridge.sendMessage(method, {})
+      setMessages((prev) => [...prev, `Sent: ${method}`])
     } else {
       setMessages((prev) => [...prev, "Cannot send message: Bridge not connected"])
     }
+  }
+
+  const handleClearSession = () => {
+    clearBridgeSession()
+    setMessages((prev) => [...prev, "Session cleared from storage"])
+  }
+
+  const handleCopyConnectionString = async () => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(connectionString)
+        setMessages((prev) => [...prev, "Connection string copied to clipboard"])
+      } catch (error) {
+        setMessages((prev) => [...prev, "Failed to copy to clipboard"])
+        console.error("Failed to copy:", error)
+      }
+    } else {
+      // Fallback: Create a temporary textarea element
+      try {
+        const textarea = document.createElement("textarea")
+        textarea.value = connectionString
+        textarea.style.position = "fixed"
+        textarea.style.opacity = "0"
+        document.body.appendChild(textarea)
+        textarea.select()
+        document.execCommand("copy")
+        document.body.removeChild(textarea)
+        setMessages((prev) => [...prev, "Connection string copied to clipboard"])
+      } catch (error) {
+        setMessages((prev) => [...prev, "Failed to copy to clipboard"])
+        console.error("Failed to copy:", error)
+      }
+    }
+  }
+
+  const handleClearMessages = () => {
+    setMessages([])
   }
 
   return (
@@ -102,14 +156,23 @@ function JoinBridgeContent() {
         <div className="mb-8 w-full max-w-[800px]">
           <p className="mb-2 font-medium">Connection String:</p>
           <div className="flex gap-2">
-            <input
-              id="connectionString"
-              type="text"
-              value={connectionString}
-              onChange={(e) => setConnectionString(e.target.value)}
-              className="flex-1 p-3 border rounded bg-background text-foreground text-sm"
-              placeholder="Enter connection string"
-            />
+            <div className="flex-1 relative">
+              <input
+                id="connectionString"
+                type="text"
+                value={connectionString}
+                onChange={(e) => setConnectionString(e.target.value)}
+                className="w-full p-3 pr-10 border rounded bg-background text-foreground text-sm"
+                placeholder="Enter connection string"
+              />
+              <button
+                onClick={handleCopyConnectionString}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition"
+                title="Copy to clipboard"
+              >
+                <CopyIcon />
+              </button>
+            </div>
             <button
               onClick={() => handleJoinBridge(connectionString)}
               className="px-4 py-3 bg-foreground text-background font-medium rounded hover:bg-foreground/90 transition disabled:opacity-50 disabled:cursor-not-allowed"
@@ -117,10 +180,21 @@ function JoinBridgeContent() {
             >
               {joinStatus === "joining" ? "Joining..." : joinStatus === "connected" ? "Connected" : "Join"}
             </button>
+            <button
+              onClick={handleClearSession}
+              className="px-4 py-3 bg-orange-600 text-white font-medium rounded hover:bg-orange-700 transition"
+            >
+              Clear Session
+            </button>
           </div>
         </div>
 
-        <MessagesPanel messages={messages} onSendMessage={handleSendMessage} defaultMessage="hello from joiner!" />
+        <MessagesPanel
+          messages={messages}
+          onSendMessage={handleSendMessage}
+          onClearMessages={handleClearMessages}
+          defaultMessage="hello_from_joiner"
+        />
       </div>
     </Suspense>
   )

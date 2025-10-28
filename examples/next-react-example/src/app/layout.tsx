@@ -23,10 +23,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             </Link>
           </div>
         </nav>
-        <div className="text-center text-sm text-gray-400 mt-4 mb-4">
+        {/* <div className="text-center text-sm text-gray-400 mt-4 mb-4">
           Be sure to build the package in the root!{" "}
-          <code className="bg-gray-20 px-1 py-0.5 rounded">bun run build:watch</code>
-        </div>
+          <code className="bg-gray-20 px-1 py-0.5 rounded">bun run build</code>
+        </div> */}
         {children}
       </body>
     </html>

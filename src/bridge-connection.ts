@@ -735,7 +735,7 @@ export class BridgeConnection {
    */
   public async connect(url: string): Promise<void> {
     try {
-      this.log("Connecting to bridge", url)
+      this.log("Connecting to bridge...", url)
       // Create WebSocket connection to the bridge
       const websocket = await (this.origin ? getWebSocketClient(url, this.origin) : getWebSocketClient(url))
       this.websocket = websocket
