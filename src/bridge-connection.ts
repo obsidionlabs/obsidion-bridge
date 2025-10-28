@@ -5,7 +5,7 @@ import { decrypt, encrypt, getSharedSecret } from "./encryption"
 import { sendEncryptedJsonRpcRequest } from "./json-rpc"
 import { getWebSocketClient, WebSocketClient } from "./websocket"
 import { parseOriginHeader, generateRandomId } from "./utils"
-import { DEFAULT_MAX_RECONNECT_ATTEMPTS } from "./constants"
+import { DEFAULT_MAX_RECONNECT_ATTEMPTS, DEFAULT_PING_INTERVAL, DEFAULT_WS_ENDPOINT } from "./constants"
 import type { BridgeEventCallback, BridgeOptions, KeyPair } from "./types"
 import { BridgeEventType, BridgeDisconnectedEvent as DisconnectedEvent, FailedToConnectEvent } from "./types"
 
@@ -72,8 +72,8 @@ export class BridgeConnection {
     this.reconnect = options.reconnect ?? true
     this.keepalive = options.keepalive ?? true
     this.maxReconnectAttempts = options.reconnectAttempts || DEFAULT_MAX_RECONNECT_ATTEMPTS
-    this.pingInterval = options.pingInterval || 30000
-    this.bridgeUrl = options.bridgeUrl ?? "wss://bridge.zkpassport.id"
+    this.pingInterval = options.pingInterval || DEFAULT_PING_INTERVAL
+    this.bridgeUrl = options.bridgeUrl ?? DEFAULT_WS_ENDPOINT
 
     // Initialize event listeners
     this.eventListeners = {
@@ -197,7 +197,7 @@ export class BridgeConnection {
 
     websocket.onclose = async (event: CloseEvent) => {
       const { code, reason, wasClean } = event
-      console.log("[websocket.onclose]", { code, reason, wasClean, readyState: websocket.readyState })
+      this.log("[websocket.onclose]", { code, reason, wasClean, readyState: websocket.readyState })
 
       // Clear the ping timer if it is set
       if (this.pingTimer) clearInterval(this.pingTimer)
@@ -259,14 +259,13 @@ export class BridgeConnection {
 
     // Check for missing message id
     if (!data.id) {
-      this.log(`Ignoring message with missing id`)
-      console.log(data)
+      this.log("Ignoring message with missing id:", data)
       return
     }
 
     // Check for duplicate message id
     if (this.seenMessageIds.has(data.id)) {
-      this.log(`Ignoring message with duplicate id: ${data.id}`)
+      this.log("Ignoring message with duplicate id:", data.id)
       return
     }
     // Track this message ID
