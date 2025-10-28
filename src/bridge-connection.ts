@@ -144,7 +144,7 @@ export class BridgeConnection {
       // Set up ping timer
       if (this.pingTimer) clearInterval(this.pingTimer)
       this.pingTimer = setInterval(() => {
-        if (this.websocket) this.websocket.send(JSON.stringify({ method: "ping", params: {} }))
+        if (this.websocket) this.websocket.send(JSON.stringify({ method: "ping", params: {}, nocache: true }))
       }, this.pingInterval)
 
       // Emit the connected event
@@ -251,7 +251,7 @@ export class BridgeConnection {
     // Respond to ping messages
     if (data.method === "ping") {
       this.log("Received ping message, responding with pong")
-      this.websocket?.send(JSON.stringify({ method: "pong", params: {} }))
+      this.websocket?.send(JSON.stringify({ method: "pong", params: {}, nocache: true }))
       return
     }
     // Ignore pong messages
