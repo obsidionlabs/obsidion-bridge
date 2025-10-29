@@ -5,11 +5,12 @@ import { useState, useRef, useEffect } from "react"
 interface MessagesPanelProps {
   messages: string[]
   onSendMessage: (message: string) => void
+  onClearMessages?: () => void
   defaultMessage?: string
 }
 
-export function MessagesPanel({ messages, onSendMessage, defaultMessage }: MessagesPanelProps) {
-  const [messageText, setMessageText] = useState(defaultMessage || "hello")
+export function MessagesPanel({ messages, onSendMessage, onClearMessages, defaultMessage }: MessagesPanelProps) {
+  const [messageText, setMessageText] = useState(defaultMessage || "")
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Auto-scroll to the bottom when messages change
@@ -28,11 +29,22 @@ export function MessagesPanel({ messages, onSendMessage, defaultMessage }: Messa
         value={messages.join("\n")}
         className="w-full h-[200px] p-3 border rounded bg-background text-foreground font-mono text-sm"
       />
+      {onClearMessages && (
+        <div className="flex justify-end mt-1">
+          <button
+            onClick={onClearMessages}
+            className="px-3 py-1 text-sm bg-gray-500 text-white font-medium rounded hover:bg-gray-600 transition"
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
       <div className="mt-4 space-y-2">
         <div>
-          <label htmlFor="message" className="block font-medium mb-2">
-            Send Message:
+          <label className="block font-medium mb-2">Send Encrypted Message:</label>
+          <label htmlFor="message" className="block text-sm font-medium mb-1">
+            Method:
           </label>
           <div className="flex gap-2">
             <input
@@ -40,6 +52,7 @@ export function MessagesPanel({ messages, onSendMessage, defaultMessage }: Messa
               type="text"
               value={messageText}
               onChange={(e) => setMessageText(e.target.value)}
+              placeholder="Method name"
               className="flex-1 p-2 border rounded"
             />
             <button

@@ -1,8 +1,10 @@
 import { bytesToHex } from "@noble/ciphers/utils"
 import { BridgeConnection } from "./bridge-connection"
-import { generateECDHKeyPair, KeyPair } from "./encryption"
+import { generateECDHKeyPair } from "./encryption"
 import { WebSocketClient } from "./websocket"
 import debug from "debug"
+import type { KeyPair } from "./types"
+import { BridgeDisconnectedEvent, FailedToConnectEvent } from "./types"
 
 /**
  * Options for creating a bridge
@@ -41,19 +43,24 @@ export interface BridgeInterface extends Disposable {
   websocket: WebSocketClient | undefined
   connection: BridgeConnection
   onConnect: (callback: (reconnection: boolean) => void) => () => void
+  onFailedToConnect: (callback: (event: FailedToConnectEvent) => void) => () => void
   onSecureChannelEstablished: (callback: () => void) => () => void
+  onRawMessage: (callback: (message: any) => void) => () => void
   onSecureMessage: (callback: (message: any) => void) => () => void
   onError: (callback: (error: string) => void) => () => void
-  onDisconnect: (callback: () => void) => () => void
+  onDisconnect: (callback: (event: BridgeDisconnectedEvent) => void) => () => void
   isBridgeConnected: () => boolean
   isSecureChannelEstablished: () => boolean
   sendMessage: (method: string, params?: any) => Promise<boolean>
   connectionString: string
   origin: string
+  bridgeId: string
   getPublicKey: () => string
   getRemotePublicKey: () => string
   getKeyPair: () => KeyPair
+  // TODO: Deprecate close() and use cleanup() instead
   close: () => void
+  cleanup: () => void
 }
 
 /**
@@ -90,7 +97,7 @@ export class Bridge {
     }
 
     // Use provided key pair or generate a new one
-    const keyPair = options.keyPair || (await generateECDHKeyPair())
+    const keyPair = options.keyPair || generateECDHKeyPair()
 
     // Use creator's public key as the bridge ID
     const bridgeId = bytesToHex(keyPair.publicKey)
@@ -126,7 +133,9 @@ export class Bridge {
       websocket: connection.getWebSocket(),
       connection: connection,
       onConnect: (callback) => connection.onConnect(callback),
+      onFailedToConnect: (callback) => connection.onFailedToConnect(callback),
       onSecureChannelEstablished: (callback) => connection.onSecureChannelEstablished(callback),
+      onRawMessage: (callback) => connection.onRawMessage(callback),
       onSecureMessage: (callback) => connection.onSecureMessage(callback),
       onError: (callback) => connection.onError(callback),
       onDisconnect: (callback) => connection.onDisconnect(callback),
@@ -134,12 +143,15 @@ export class Bridge {
       isSecureChannelEstablished: () => connection.isSecureChannelEstablished(),
       sendMessage: (method, params) => connection.sendSecureMessage(method, params || {}),
       connectionString: connection.connectionString!,
+      bridgeId: connection.getBridgeId(),
       origin: connection.bridgeOrigin,
       getKeyPair: () => connection.keyPair,
       getPublicKey: () => connection.getPublicKey(),
+      // TODO: Deprecate close() and use cleanup() instead
       getRemotePublicKey: () => connection.getRemotePublicKey(),
-      close: () => connection.close(),
-      [Symbol.dispose]: () => connection.close(),
+      close: () => connection.cleanup(),
+      cleanup: () => connection.cleanup(),
+      [Symbol.dispose]: () => connection.cleanup(),
     }
   }
 
@@ -161,7 +173,7 @@ export class Bridge {
     }
 
     // Use provided key pair or generate a new one
-    const keyPair = options.keyPair || (await generateECDHKeyPair())
+    const keyPair = options.keyPair || generateECDHKeyPair()
 
     // Parse URL parameters
     const { domain, pubkey } = Bridge.parseConnectionString(uri)
@@ -195,7 +207,9 @@ export class Bridge {
       websocket: connection.getWebSocket(),
       connection: connection,
       onConnect: (callback) => connection.onConnect(callback),
+      onFailedToConnect: (callback) => connection.onFailedToConnect(callback),
       onSecureChannelEstablished: (callback) => connection.onSecureChannelEstablished(callback),
+      onRawMessage: (callback) => connection.onRawMessage(callback),
       onSecureMessage: (callback) => connection.onSecureMessage(callback),
       onError: (callback) => connection.onError(callback),
       onDisconnect: (callback) => connection.onDisconnect(callback),
@@ -203,12 +217,15 @@ export class Bridge {
       isSecureChannelEstablished: () => connection.isSecureChannelEstablished(),
       sendMessage: (method, params) => connection.sendSecureMessage(method, params || {}),
       connectionString: connection.connectionString!,
+      bridgeId: connection.getBridgeId(),
       origin: connection.bridgeOrigin,
       getKeyPair: () => connection.keyPair,
       getPublicKey: () => connection.getPublicKey(),
       getRemotePublicKey: () => connection.getRemotePublicKey(),
-      close: () => connection.close(),
-      [Symbol.dispose]: () => connection.close(),
+      // TODO: Deprecate close() and use cleanup() instead
+      close: () => connection.cleanup(),
+      cleanup: () => connection.cleanup(),
+      [Symbol.dispose]: () => connection.cleanup(),
     }
   }
 

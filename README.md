@@ -31,27 +31,34 @@ bridge.onConnect((reconnection: boolean) => {
   console.log(`${reconnection ? "Reconnected" : "Connected"} to bridge`)
 })
 
+bridge.onFailedToConnect((event: FailedToConnectEvent) => {
+  console.error("Failed to connect", event)
+})
+
 bridge.onSecureChannelEstablished(() => {
   console.log("Secure channel established with joiner")
-
   // Now we can send secure messages
-  bridge.sendSecureMessage("greeting", { message: "Hello from creator!" })
+  bridge.sendMessage("greeting", { message: "Hello from creator!" })
 })
 
 bridge.onSecureMessage((message) => {
   console.log("Received message:", message)
 })
 
-bridge.onDisconnect(() => {
-  console.log("Disconnected from bridge")
+bridge.onRawMessage((raw: string) => {
+  logMessage(`Raw message received: ${raw}`)
+})
+
+bridge.onDisconnect((event: BridgeDisconnectedEvent) => {
+  console.log("Disconnected from bridge", event)
 })
 
 bridge.onError((error) => {
-  console.error(`Error: ${error}`)
+  console.error("Error:", error)
 })
 
-// Close the bridge when done
-bridge.close()
+// Cleanup the bridge when done
+bridge.cleanup()
 ```
 
 ### Bridge Joiner
@@ -69,25 +76,32 @@ bridge.onConnect((reconnection: boolean) => {
   console.log(`${reconnection ? "Reconnected" : "Connected"} to bridge`)
 })
 
+bridge.onFailedToConnect((event: FailedToConnectEvent) => {
+  console.error("Failed to connect", event)
+})
+
 bridge.onSecureChannelEstablished(() => {
   console.log("Secure channel established with creator")
-
   // Now we can send secure messages
-  bridge.sendSecureMessage("greeting", { message: "Hello from joiner!" })
+  bridge.sendMessage("greeting", { message: "Hello from joiner!" })
 })
 
 bridge.onSecureMessage((message) => {
   console.log("Received message:", message)
 })
 
-bridge.onDisconnect(() => {
-  console.log("Disconnected from bridge")
+bridge.onRawMessage((raw: string) => {
+  logMessage(`Raw message received: ${raw}`)
+})
+
+bridge.onDisconnect((event: BridgeDisconnectedEvent) => {
+  console.log("Disconnected from bridge", event)
 })
 
 bridge.onError((error) => {
-  console.error(`Error: ${error}`)
+  console.error("Error:", error)
 })
 
-// Close the bridge when done
-bridge.close()
+// Cleanup the bridge when done
+bridge.cleanup()
 ```

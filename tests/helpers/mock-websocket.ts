@@ -220,16 +220,35 @@ export class MockWebSocket {
 
 // This is a mock function that mimics the behavior of the bridge server on client connect
 const mockBridgeServerClientConnect = function () {
-  // If the WebSocket URI used to connect contains a pubkey param, the server will automatically
-  // broadcast a handshake message to all connected clients
+  // If the WebSocket connection URI contains a `moc` (message on connect) param,
+  // the server will automatically broadcast it to the bridge on connect
   if (this.url) {
     const url = new URL(this.url)
-    const pubkey = url.searchParams.get("pubkey")
-    const greeting = url.searchParams.get("greeting")
-    if (pubkey && greeting) {
-      setTimeout(async () => {
-        this.send(JSON.stringify({ jsonrpc: "2.0", id: "1", method: "handshake", params: { pubkey, greeting } }))
-      }, 10)
+
+    // Message on connect (moc) - if present, decode and treat as incoming message
+    const moc = url.searchParams.get("moc")
+    if (moc) {
+      try {
+        // Decode the base64 encoded message (URL decode first, then base64)
+        const decodedMessage = atob(decodeURIComponent(moc)).trim()
+        if (!decodedMessage) {
+          // Simulate server disconnect on error
+          setTimeout(() => {
+            this.simulateServerDisconnect(1008, "Empty message on connect")
+          }, 5)
+          return
+        }
+
+        // Simulate message on connect message sending
+        setTimeout(async () => {
+          this.send(decodedMessage)
+        }, 10)
+      } catch {
+        // Simulate server disconnect on error
+        setTimeout(() => {
+          this.simulateServerDisconnect(1008, "Invalid message on connect")
+        }, 5)
+      }
     }
   }
 }
@@ -251,12 +270,12 @@ const mockBridgeServerMessageRelay = function (data: string): string | undefined
 export const mockWebSocket = () => {
   return {
     getWebSocketClient: jest.fn((url: string, origin: string) => {
-      // Extract topic/bridgeId from url for use in MockWebSocket
+      // Extract bridge id from url for use in MockWebSocket
       const urlObj = new URL(url)
-      const topicFromUrl = urlObj.searchParams.get("topic") || ""
+      const bridgeIdFromUrl = urlObj.searchParams.get("id") || urlObj.searchParams.get("topic") || ""
       const websocket = new MockWebSocket(url, {
         headers: { Origin: origin },
-        hubChannel: topicFromUrl, // Use topic from URL
+        hubChannel: bridgeIdFromUrl, // Use id from URL
         onConnectInterceptor: mockBridgeServerClientConnect,
         onSendInterceptor: mockBridgeServerMessageRelay,
       })
