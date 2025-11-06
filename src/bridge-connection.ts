@@ -5,7 +5,12 @@ import { decrypt, encrypt, getSharedSecret } from "./encryption"
 import { sendEncryptedJsonRpcRequest } from "./json-rpc"
 import { getWebSocketClient, WebSocketClient } from "./websocket"
 import { parseOriginHeader, generateRandomId } from "./utils"
-import { DEFAULT_MAX_RECONNECT_ATTEMPTS, DEFAULT_PING_INTERVAL, DEFAULT_WS_ENDPOINT } from "./constants"
+import {
+  DEFAULT_MAX_RECONNECT_ATTEMPTS,
+  DEFAULT_PING_INTERVAL,
+  DEFAULT_WS_ENDPOINT,
+  PROTOCOL_VERSION,
+} from "./constants"
 import type { BridgeEventCallback, BridgeOptions, KeyPair } from "./types"
 import { BridgeEventType, BridgeDisconnectedEvent as DisconnectedEvent, FailedToConnectEvent } from "./types"
 
@@ -660,7 +665,7 @@ export class BridgeConnection {
    */
   public async _getWsConnectionUrl(): Promise<string> {
     if (this.role === "creator") {
-      return `${this.bridgeUrl}?id=${this.getBridgeId()}`
+      return `${this.bridgeUrl}?id=${this.getBridgeId()}&v=${PROTOCOL_VERSION}`
     } else {
       // Add a moc (message on connect) parameter if the secure channel is not established yet
       if (!this.isSecureChannelEstablished()) {
@@ -673,9 +678,9 @@ export class BridgeConnection {
           params: { pubkey: this.getPublicKey(), greeting: greeting },
         })
         const moc = Buffer.from(handshakeMessage).toString("base64")
-        return `${this.bridgeUrl}?id=${this.getBridgeId()}&moc=${encodeURIComponent(moc)}`
+        return `${this.bridgeUrl}?id=${this.getBridgeId()}&v=${PROTOCOL_VERSION}&moc=${encodeURIComponent(moc)}`
       } else {
-        return `${this.bridgeUrl}?id=${this.getBridgeId()}`
+        return `${this.bridgeUrl}?id=${this.getBridgeId()}&v=${PROTOCOL_VERSION}`
       }
     }
   }
