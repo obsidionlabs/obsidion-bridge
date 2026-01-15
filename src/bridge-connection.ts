@@ -273,7 +273,7 @@ export class BridgeConnection {
         this.log("WARNING: Ignoring unsolicited ooc message")
         return
       }
-      // Ignore of secure channel is already established
+      // Ignore if secure channel is already established
       if (this.secureChannelEstablished) {
         this.log("WARNING: Secure channel already established. Ignoring ooc message")
         return
