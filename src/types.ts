@@ -99,4 +99,5 @@ export interface BridgeOptions {
   domain?: string
   pingInterval?: number
   bridgeUrl?: string
+  originOnConnect?: boolean
 }

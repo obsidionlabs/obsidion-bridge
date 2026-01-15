@@ -9,6 +9,9 @@ export class MockWebSocket {
   // Static hub to manage connections between MockWebSocket instances
   private static hub: Map<string, MockWebSocket[]> = new Map()
 
+  // Static storage for bridge origins (keyed by bridge ID)
+  private static bridgeOrigins: Map<string, string> = new Map()
+
   onopen: (() => void) | null = null
   onmessageHandlers: ((event: { data: string }) => void)[] = []
   onmessage: ((event: { data: string }) => void) | null = null
@@ -87,6 +90,23 @@ export class MockWebSocket {
 
   // Method to handle incoming messages
   private receiveMessage(data: string) {
+    // Ignore messages that are not valid JSON
+    // TODO: Consider disconnecting here instead
+    let parsed: any
+    try {
+      parsed = JSON.parse(data)
+    } catch {
+      console.log("Ignoring invalid JSON message:", data)
+      return
+    }
+
+    // Ignore JSON RPC messages with method: 'replay'
+    // These are intended for the bridge server only and should not be broadcast and relayed to other clients
+    // TODO: Implement actual replay logic to mirror the bridge server's replay logic
+    if (parsed && parsed.method === "replay") {
+      return
+    }
+
     this.receivedMessages.push(data)
 
     // Trigger message handlers
@@ -207,6 +227,21 @@ export class MockWebSocket {
     MockWebSocket.hub.clear()
   }
 
+  // Static method to store a bridge origin
+  static storeBridgeOrigin(bridgeId: string, origin: string) {
+    MockWebSocket.bridgeOrigins.set(bridgeId, origin)
+  }
+
+  // Static method to get a bridge origin
+  static getBridgeOrigin(bridgeId: string): string | undefined {
+    return MockWebSocket.bridgeOrigins.get(bridgeId)
+  }
+
+  // Static method to clear all bridge origins (useful for test cleanup)
+  static clearBridgeOrigins() {
+    MockWebSocket.bridgeOrigins.clear()
+  }
+
   // Static method to simulate a server-side disconnect for all connections in a channel
   static simulateServerDisconnectForChannel(channel: string, code = 1006, reason = "Server closed connection") {
     if (MockWebSocket.hub.has(channel)) {
@@ -224,6 +259,36 @@ const mockBridgeServerClientConnect = function () {
   // the server will automatically broadcast it to the bridge on connect
   if (this.url) {
     const url = new URL(this.url)
+    const bridgeId = url.searchParams.get("id") || url.searchParams.get("topic") || ""
+
+    // Disconnect if no bridge ID is specified
+    if (!bridgeId) {
+      setTimeout(() => {
+        this.simulateServerDisconnect(1008, "Missing bridge ID")
+      }, 5)
+      return
+    }
+
+    // If client has an origin and there's no stored origin, store it (creator)
+    if (this.origin && !MockWebSocket.getBridgeOrigin(bridgeId)) {
+      MockWebSocket.storeBridgeOrigin(bridgeId, this.origin)
+    }
+
+    // Origin on connect (ooc) - if present, send the bridge origin to client
+    if (url.searchParams.has("ooc")) {
+      const storedOrigin = MockWebSocket.getBridgeOrigin(bridgeId)
+      if (storedOrigin) {
+        setTimeout(() => {
+          // Send origin as a JSON-RPC notification
+          const originMessage = JSON.stringify({ jsonrpc: "2.0", method: "ooc", params: { origin: storedOrigin } })
+          // Directly trigger the message handler (don't broadcast to other sockets)
+          if (this.onmessage) this.onmessage({ data: originMessage })
+          for (const handler of this.onmessageHandlers) {
+            handler({ data: originMessage })
+          }
+        }, 5)
+      }
+    }
 
     // Message on connect (moc) - if present, decode and treat as incoming message
     const moc = url.searchParams.get("moc")
