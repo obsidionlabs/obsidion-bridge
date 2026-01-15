@@ -21,6 +21,7 @@ export interface CreateOptions {
   debug?: boolean
   pingInterval?: number
   bridgeUrl?: string
+  originOnConnect?: boolean
 }
 
 /**
@@ -34,6 +35,7 @@ export interface JoinOptions {
   debug?: boolean
   pingInterval?: number
   bridgeUrl?: string
+  originOnConnect?: boolean
 }
 
 /**
@@ -112,6 +114,7 @@ export class Bridge {
       keepalive: options.keepalive,
       pingInterval: options.pingInterval,
       bridgeUrl: options.bridgeUrl,
+      originOnConnect: options.originOnConnect ?? true,
     })
 
     // Resume existing bridge session if requested
@@ -176,7 +179,10 @@ export class Bridge {
     const keyPair = options.keyPair || generateECDHKeyPair()
 
     // Parse URL parameters
-    const { domain, pubkey } = Bridge.parseConnectionString(uri)
+    const { domain, pubkey, ooc } = Bridge.parseConnectionString(uri)
+
+    // Determine originOnConnect: use explicit option if provided, otherwise use value from connection string
+    const originOnConnect = options.originOnConnect !== undefined ? options.originOnConnect : ooc
 
     // Create connection instance with joiner role and domain
     const connection = new BridgeConnection({
@@ -188,6 +194,7 @@ export class Bridge {
       keepalive: options.keepalive,
       pingInterval: options.pingInterval,
       bridgeUrl: options.bridgeUrl,
+      originOnConnect,
     })
 
     // Set remote public key
@@ -229,16 +236,17 @@ export class Bridge {
     }
   }
 
-  private static parseConnectionString(uri: string): { domain: string; pubkey: string } {
+  private static parseConnectionString(uri: string): { domain: string; pubkey: string; ooc: boolean } {
     const parsedUri = new URL(uri)
     const pubkey = parsedUri.pathname
     let domain = parsedUri.searchParams.get("d")
+    const ooc = parsedUri.searchParams.has("ooc")
     if (!domain || !pubkey) {
       throw new Error("Invalid connection string: missing required parameters")
     }
     // Default to https if no protocol is specified
     if (domain !== "nodejs" && !domain.startsWith("http")) domain = "https://" + domain
-    return { domain, pubkey }
+    return { domain, pubkey, ooc }
   }
 
   /**

@@ -105,7 +105,7 @@ describe("Bridge", () => {
     // Wait for creator to connect first to avoid race conditions
     await waitForCallback(creator.onConnect)
 
-    await using joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
+    await using joiner = await Bridge.join(creator.connectionString, { ...JOIN_OPTIONS, originOnConnect: false })
 
     // Wait for both secure channels to be established to avoid race conditions
     await waitForCallback(joiner.onSecureChannelEstablished)
@@ -126,10 +126,12 @@ describe("Bridge", () => {
 
   test("should handle reconnect on disconnect", async () => {
     await using creator = await Bridge.create(CREATE_OPTIONS)
+    const onCreatorSecureChannelEstablished = waitForCallback(creator.onSecureChannelEstablished)
     await waitForCallback(creator.onConnect)
 
     await using joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
     await waitForCallback(joiner.onSecureChannelEstablished)
+    await onCreatorSecureChannelEstablished
 
     expect(joiner.isBridgeConnected()).toBe(true)
     joiner.websocket!.close()
@@ -201,9 +203,11 @@ describe("Bridge", () => {
 
   test("should correctly resume as creator", async () => {
     await using creator = await Bridge.create(CREATE_OPTIONS)
+    const creatorOnSecureChannelEstablished = waitForCallback(creator.onSecureChannelEstablished)
     await waitForCallback(creator.onConnect)
 
-    await using joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
+    await using joiner = await Bridge.join(creator.connectionString, { ...JOIN_OPTIONS, originOnConnect: false })
+    await creatorOnSecureChannelEstablished
     await waitForCallback(joiner.onSecureChannelEstablished)
     expect(joiner.isSecureChannelEstablished()).toBe(true)
 
@@ -231,7 +235,7 @@ describe("Bridge", () => {
     // Wait for creator to connect first to avoid race conditions
     await waitForCallback(creator.onConnect)
 
-    await using joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
+    await using joiner = await Bridge.join(creator.connectionString, { ...JOIN_OPTIONS, originOnConnect: false })
 
     // Wait for both secure channels to be established to avoid race conditions
     await waitForCallback(joiner.onSecureChannelEstablished)
@@ -267,7 +271,7 @@ describe("Bridge", () => {
     const onCreatorSecureChannelEstablished = waitForCallback(creator.onSecureChannelEstablished)
     await waitForCallback(creator.onConnect)
 
-    await using joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
+    await using joiner = await Bridge.join(creator.connectionString, { ...JOIN_OPTIONS, originOnConnect: false })
     await waitForCallback(joiner.onSecureChannelEstablished)
     await onCreatorSecureChannelEstablished
     // Get the handshake message id so we can ignore it later
@@ -301,5 +305,136 @@ describe("Bridge", () => {
     // The duplicate message should have been ignored, so validMessagesReceived should still be 2
     // @ts-expect-error private property
     expect(joiner.connection.validMessagesReceived).toBe(2)
+  })
+
+  test("should receive origin on connect (ooc)", async () => {
+    const testOrigin = "https://test-ooc-origin.example.com"
+
+    await using creator = await Bridge.create({ ...CREATE_OPTIONS, origin: testOrigin })
+    await waitForCallback(creator.onConnect)
+
+    // The creator's origin should be set
+    expect(creator.origin).toBe(testOrigin)
+
+    await using joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
+    await waitForCallback(joiner.onSecureChannelEstablished)
+
+    // The joiner should receive the origin via ooc and have it set
+    expect(joiner.origin).toBe(testOrigin)
+    // Verify that the origin was validated via ooc (not just from handshake)
+    // @ts-expect-error private property
+    expect(joiner.connection._originValidatedViaOoc).toBe(true)
+  })
+
+  test("should fail to verify incorrect origin on connect (ooc)", async () => {
+    const actualOrigin = "https://actual-ooc-origin.com"
+    const wrongOrigin = "https://wrong-ooc-origin.com"
+
+    await using creator = await Bridge.create({ ...CREATE_OPTIONS, origin: actualOrigin })
+    await waitForCallback(creator.onConnect)
+
+    // Modify the connection string to have the wrong expected origin
+    const tamperedConnectionString = creator.connectionString.replace(actualOrigin, wrongOrigin)
+
+    await using joiner = await Bridge.join(tamperedConnectionString, JOIN_OPTIONS)
+
+    // The joiner should receive an error because the ooc origin doesn't match
+    const error = await waitForCallback(joiner.onError)
+    expect(error).toContain("origin")
+    expect(error).toContain(actualOrigin)
+    expect(error).toContain(wrongOrigin)
+  })
+
+  test("should ignore unsolicited ooc messages", async () => {
+    const { BridgeConnection } = await import("../src/bridge-connection")
+    const connection = new BridgeConnection({
+      role: "joiner",
+      bridgeId: "test-bridge",
+      keyPair: keyPairMobile,
+      bridgeUrl: CREATE_OPTIONS.bridgeUrl,
+      originOnConnect: false,
+    })
+
+    // Set up listener before connecting
+    const onConnectPromise = new Promise<void>((resolve) => {
+      connection.onConnect(() => resolve())
+    })
+
+    // Connect without requesting ooc by manually constructing a URL
+    const urlWithoutOoc = `${CREATE_OPTIONS.bridgeUrl}?id=test-bridge&v=1`
+    await connection.connect(urlWithoutOoc)
+    await onConnectPromise
+
+    // Manually send an unsolicited ooc message (from bridge server to joiner)
+    const unsolicitedOocMessage = JSON.stringify({
+      jsonrpc: "2.0",
+      method: "ooc",
+      params: { origin: "https://malicious-origin.com" },
+    })
+    const websocket = connection.getWebSocket()
+    if (websocket?.onmessage) {
+      // @ts-expect-error - calling onmessage directly for testing
+      websocket.onmessage({ data: unsolicitedOocMessage })
+    }
+
+    // Wait a bit to ensure the message would have been processed
+    await delay(10)
+
+    // The bridge origin should not have been set from the unsolicited message
+    // @ts-expect-error accessing private property
+    expect(connection._bridgeOrigin).toBeUndefined()
+
+    connection.cleanup()
+  })
+
+  test("should use ooc from connection string (joiner) when originOnConnect is not specified", async () => {
+    // Creator with originOnConnect=false
+    await using creator = await Bridge.create({ ...CREATE_OPTIONS, originOnConnect: false })
+    await waitForCallback(creator.onConnect)
+
+    // Connection string should not include ooc
+    expect(creator.connectionString).not.toContain("ooc")
+
+    // Joiner without specifying originOnConnect should use value from connection string (false)
+    await using joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
+    await waitForCallback(joiner.onConnect)
+
+    // Joiner should not have ooc parameter since connection string didn't have it
+    const joinerWebsocketUrl = joiner.websocket?.url || ""
+    expect(joinerWebsocketUrl).not.toContain("ooc")
+  })
+
+  test("should allow joiner to override ooc from connection string (override false->true)", async () => {
+    // Creator with originOnConnect=false
+    await using creator = await Bridge.create({ ...CREATE_OPTIONS, originOnConnect: false })
+    await waitForCallback(creator.onConnect)
+
+    // Connection string should not include ooc
+    expect(creator.connectionString).not.toContain("ooc")
+
+    // Joiner explicitly sets originOnConnect=true, overriding the connection string
+    await using joiner = await Bridge.join(creator.connectionString, { ...JOIN_OPTIONS, originOnConnect: true })
+    await waitForCallback(joiner.onConnect)
+
+    // Joiner should have ooc parameter since it explicitly set to true
+    const joinerWebsocketUrl = joiner.websocket?.url || ""
+    expect(joinerWebsocketUrl).toContain("ooc")
+  })
+
+  test("should allow joiner to override ooc from connection string (override true->false)", async () => {
+    // Creator with originOnConnect=true
+    await using creator = await Bridge.create({ ...CREATE_OPTIONS, originOnConnect: true })
+    await waitForCallback(creator.onConnect)
+
+    // Connection string should include ooc
+    expect(creator.connectionString).toContain("ooc")
+
+    // Joiner explicitly sets originOnConnect=false, overriding the connection string
+    await using joiner = await Bridge.join(creator.connectionString, { ...JOIN_OPTIONS, originOnConnect: false })
+    await waitForCallback(joiner.onConnect)
+
+    // Joiner should NOT have ooc parameter since it explicitly set to false
+    const joinerWebsocketUrl = joiner.websocket?.url || ""
+    expect(joinerWebsocketUrl).not.toContain("ooc")
   })
 })

@@ -44,6 +44,8 @@ export class BridgeConnection {
   private bridgeUrl?: string
   private validMessagesReceived = 0
   private lastMessageTimestamp: number = 0
+  private originOnConnect: boolean
+  private _originValidatedViaOoc = false
 
   // Event handlers
   private eventListeners: {
@@ -79,6 +81,8 @@ export class BridgeConnection {
     this.maxReconnectAttempts = options.reconnectAttempts || DEFAULT_MAX_RECONNECT_ATTEMPTS
     this.pingInterval = options.pingInterval || DEFAULT_PING_INTERVAL
     this.bridgeUrl = options.bridgeUrl ?? DEFAULT_WS_ENDPOINT
+    // Both creator and joiner can control originOnConnect (defaults to true)
+    this.originOnConnect = options.originOnConnect ?? true
 
     // Initialize event listeners
     this.eventListeners = {
@@ -261,6 +265,45 @@ export class BridgeConnection {
     }
     // Ignore pong messages
     if (data.method === "pong") return
+
+    // Handle origin on connect (ooc) message from server (joiner only)
+    if (this.role === "joiner" && data.method === "ooc" && data.params?.origin) {
+      // Only process ooc if we actually requested it
+      if (!this.originOnConnect) {
+        this.log("WARNING: Ignoring unsolicited ooc message")
+        return
+      }
+      // Ignore if secure channel is already established
+      if (this.secureChannelEstablished) {
+        this.log("WARNING: Secure channel already established. Ignoring ooc message")
+        return
+      }
+
+      const receivedOrigin = parseOriginHeader(data.params.origin)
+      this.log("Received origin on connect:", receivedOrigin)
+
+      // If we already have an expected origin from the connection string, verify it matches
+      if (this._bridgeOrigin && this._bridgeOrigin !== receivedOrigin) {
+        this.log(`WARNING: Expected origin ${this._bridgeOrigin} but got ${receivedOrigin} (via ooc)`)
+        await this.emit(
+          BridgeEventType.Error,
+          `Origin on connect ${receivedOrigin} does not match expected origin ${this._bridgeOrigin}`
+        )
+        return
+      }
+      // Store the bridge origin if not already set
+      if (!this._bridgeOrigin) {
+        this._bridgeOrigin = receivedOrigin
+        this.log("Set bridge origin from ooc:", this._bridgeOrigin)
+      }
+      // Mark that origin was validated via ooc
+      this._originValidatedViaOoc = true
+      // Consider this as a secure channel established event
+      // TODO: Should the BridgeEventType.DomainVerified event be brought back and used for this instead?
+      this.secureChannelEstablished = true
+      await this.emit(BridgeEventType.SecureChannelEstablished)
+      return
+    }
 
     // Check for missing message id
     if (!data.id) {
@@ -512,9 +555,7 @@ export class BridgeConnection {
       try {
         const reconnectionUrl = await this._getWsConnectionUrl()
         // Create new WebSocket connection
-        this.websocket = await (this.origin
-          ? getWebSocketClient(reconnectionUrl, this.origin)
-          : getWebSocketClient(reconnectionUrl))
+        this.websocket = await getWebSocketClient(reconnectionUrl, this.origin)
         this.setupWebSocketHandlers(this.websocket)
       } catch (error) {
         this.log("Reconnection failed:", error)
@@ -658,15 +699,19 @@ export class BridgeConnection {
   }
 
   /**
-   * Get the WebSocket connection URL for a joiner
-   * NOTE: If the `moc` (message on connect) param is provided in the WS connection URI,
+   * Get the WebSocket connection URL
+   * NOTE: If the `moc` (message on connect) param is provided in the WS URI,
    *       the bridge server will automatically base64 decode and broadcast it to the bridge on connect
+   * NOTE: If the `ooc` (origin on connect) param is provided in the WS URI,
+   *       the bridge server will automatically send the bridge origin to the client on connect via ooc message
    * @returns The WebSocket connection URL
    */
   public async _getWsConnectionUrl(): Promise<string> {
     if (this.role === "creator") {
       return `${this.bridgeUrl}?id=${this.getBridgeId()}&v=${PROTOCOL_VERSION}`
     } else {
+      // Joiner includes ooc to request the bridge origin from the server on connect
+      const oocParam = this.originOnConnect ? "&ooc" : ""
       // Add a moc (message on connect) parameter if the secure channel is not established yet
       if (!this.isSecureChannelEstablished()) {
         const greeting = await this.createEncryptedGreeting()
@@ -678,7 +723,7 @@ export class BridgeConnection {
           params: { pubkey: this.getPublicKey(), greeting: greeting },
         })
         const moc = Buffer.from(handshakeMessage).toString("base64")
-        return `${this.bridgeUrl}?id=${this.getBridgeId()}&v=${PROTOCOL_VERSION}&moc=${encodeURIComponent(moc)}`
+        return `${this.bridgeUrl}?id=${this.getBridgeId()}&v=${PROTOCOL_VERSION}&moc=${encodeURIComponent(moc)}${oocParam}`
       } else {
         return `${this.bridgeUrl}?id=${this.getBridgeId()}&v=${PROTOCOL_VERSION}`
       }
@@ -728,10 +773,11 @@ export class BridgeConnection {
    * Get a connection string URI for joining the bridge
    */
   public get connectionString(): string {
+    const oocParam = this.originOnConnect ? "&ooc" : ""
     if (this.role === "creator") {
-      return `obsidion:${this.getPublicKey()}?d=${this.bridgeOrigin!}`
+      return `obsidion:${this.getPublicKey()}?d=${this.bridgeOrigin!}&v=${PROTOCOL_VERSION}${oocParam}`
     } else {
-      return `obsidion:${this.getBridgeId()}?d=${this.bridgeOrigin!}`
+      return `obsidion:${this.getBridgeId()}?d=${this.bridgeOrigin!}&v=${PROTOCOL_VERSION}${oocParam}`
     }
   }
 
