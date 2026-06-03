@@ -72,7 +72,11 @@ export class BridgeConnection {
   constructor(options: BridgeOptions) {
     this.role = options.role
     this.origin = options.origin
-    this._bridgeOrigin = options.domain
+    // The joiner pins the connection-string origin by default and rejects any
+    // mismatch. When pinOrigin is explicitly disabled, the expected origin is
+    // left unset so the real origin is adopted from the origin-on-connect report.
+    const shouldPinOrigin = options.pinOrigin ?? true
+    this._bridgeOrigin = shouldPinOrigin ? options.domain : undefined
     this.log = debug(`bridge:${this.role}`)
     this.bridgeId = options.bridgeId || generateRandomId(16)
     this.keyPair = options.keyPair

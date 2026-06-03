@@ -345,6 +345,25 @@ describe("Bridge", () => {
     expect(error).toContain(wrongOrigin)
   })
 
+  test("should adopt the real origin on connect when pinOrigin is false", async () => {
+    const actualOrigin = "https://actual-ooc-origin.com"
+    const wrongOrigin = "https://wrong-ooc-origin.com"
+
+    await using creator = await Bridge.create({ ...CREATE_OPTIONS, origin: actualOrigin })
+    await waitForCallback(creator.onConnect)
+
+    // The connection string claims a different origin, but the joiner opts out
+    // of pinning, so it should adopt the creator's real origin instead of failing.
+    const tamperedConnectionString = creator.connectionString.replace(actualOrigin, wrongOrigin)
+
+    await using joiner = await Bridge.join(tamperedConnectionString, { ...JOIN_OPTIONS, pinOrigin: false })
+    await waitForCallback(joiner.onSecureChannelEstablished)
+
+    expect(joiner.origin).toBe(actualOrigin)
+    // @ts-expect-error private property
+    expect(joiner.connection._originValidatedViaOoc).toBe(true)
+  })
+
   test("should ignore unsolicited ooc messages", async () => {
     const { BridgeConnection } = await import("../src/bridge-connection")
     const connection = new BridgeConnection({

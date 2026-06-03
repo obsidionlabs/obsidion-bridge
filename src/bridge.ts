@@ -36,6 +36,10 @@ export interface JoinOptions {
   pingInterval?: number
   bridgeUrl?: string
   originOnConnect?: boolean
+  // Defaults to true. When false, the joiner does not pin the connection-string
+  // origin and instead adopts the real origin reported via origin-on-connect,
+  // leaving origin trust to the caller.
+  pinOrigin?: boolean
 }
 
 /**
@@ -147,7 +151,11 @@ export class Bridge {
       sendMessage: (method, params) => connection.sendSecureMessage(method, params || {}),
       connectionString: connection.connectionString!,
       bridgeId: connection.getBridgeId(),
-      origin: connection.bridgeOrigin,
+      // Live getter: with pinOrigin disabled the real origin is only known once
+      // the origin-on-connect report arrives, after this object is returned.
+      get origin() {
+        return connection.bridgeOrigin
+      },
       getKeyPair: () => connection.keyPair,
       getPublicKey: () => connection.getPublicKey(),
       // TODO: Deprecate close() and use cleanup() instead
@@ -195,6 +203,7 @@ export class Bridge {
       pingInterval: options.pingInterval,
       bridgeUrl: options.bridgeUrl,
       originOnConnect,
+      pinOrigin: options.pinOrigin,
     })
 
     // Set remote public key
@@ -225,7 +234,11 @@ export class Bridge {
       sendMessage: (method, params) => connection.sendSecureMessage(method, params || {}),
       connectionString: connection.connectionString!,
       bridgeId: connection.getBridgeId(),
-      origin: connection.bridgeOrigin,
+      // Live getter: with pinOrigin disabled the real origin is only known once
+      // the origin-on-connect report arrives, after this object is returned.
+      get origin() {
+        return connection.bridgeOrigin
+      },
       getKeyPair: () => connection.keyPair,
       getPublicKey: () => connection.getPublicKey(),
       getRemotePublicKey: () => connection.getRemotePublicKey(),
