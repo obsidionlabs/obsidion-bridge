@@ -62,7 +62,6 @@ async function sendStored(ws: RawSocket, ...objs: unknown[]) {
 function requestReplay(ws: RawSocket, since: number, timeoutMs = 5000): Promise<{ messages: any[]; count: number }> {
   return new Promise((resolve, reject) => {
     const messages: any[] = []
-    let timer: ReturnType<typeof setTimeout>
     const cleanup = () => {
       clearTimeout(timer)
       ws.removeEventListener("message", onMessage)
@@ -87,7 +86,7 @@ function requestReplay(ws: RawSocket, since: number, timeoutMs = 5000): Promise<
       cleanup()
       reject(new Error("connection closed before replay completed"))
     }
-    timer = setTimeout(() => {
+    const timer = setTimeout(() => {
       cleanup()
       reject(new Error("replay timed out"))
     }, timeoutMs)
