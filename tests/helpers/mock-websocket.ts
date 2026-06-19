@@ -12,6 +12,9 @@ export class MockWebSocket {
   // Static storage for bridge origins (keyed by bridge ID)
   private static bridgeOrigins: Map<string, string> = new Map()
 
+  // Static store of cached messages per bridge channel (for replay)
+  private static messages: Map<string, { data: string; timestamp: number }[]> = new Map()
+
   onopen: (() => void) | null = null
   onmessageHandlers: ((event: { data: string }) => void)[] = []
   onmessage: ((event: { data: string }) => void) | null = null
@@ -24,6 +27,8 @@ export class MockWebSocket {
   private hubChannel: string | null = null
   private onConnectInterceptor: (() => void) | null = null
   private onSendInterceptor: ((data: string) => string | undefined) | null = null
+  // One replay allowed per connection (per MockWebSocket instance)
+  private replayRequested = false
 
   constructor(
     url: string,
@@ -75,6 +80,28 @@ export class MockWebSocket {
       }
     }
 
+    // Parse to detect replay requests and to decide whether to cache the message
+    let parsed: any
+    try {
+      parsed = JSON.parse(data)
+    } catch {
+      parsed = null
+    }
+
+    // Replay requests are handled by the (mock) server and never relayed to peers
+    if (parsed && parsed.method === "replay") {
+      this.handleReplay(parsed)
+      return
+    }
+
+    // Cache the message for later replay (mirrors the bridge server's message
+    // store). `nocache` messages (e.g. ping/pong) are relayed but not stored.
+    if (this.hubChannel && parsed && !parsed.nocache) {
+      const log = MockWebSocket.messages.get(this.hubChannel) ?? []
+      log.push({ data, timestamp: Date.now() })
+      MockWebSocket.messages.set(this.hubChannel, log)
+    }
+
     // If connected to a hub, relay the message to other sockets in the same channel
     if (this.hubChannel && MockWebSocket.hub.has(this.hubChannel)) {
       const connectedSockets = MockWebSocket.hub.get(this.hubChannel) || []
@@ -86,6 +113,44 @@ export class MockWebSocket {
         }
       }
     }
+  }
+
+  // Handle a replay request: resend the messages cached for this channel since
+  // the requested timestamp (oldest first), then a `replay_complete` confirmation.
+  // One replay per connection; invalid timestamps are rejected. This mirrors the
+  // bridge server's replay logic.
+  private handleReplay(parsed: any) {
+    const frames: string[] = []
+
+    if (this.replayRequested) {
+      frames.push(
+        JSON.stringify({
+          error: "replay_already_requested",
+          message: "Replay can only be requested once per connection",
+        })
+      )
+    } else {
+      const ts = parsed?.params?.timestamp
+      if (typeof ts !== "number" || !Number.isInteger(ts) || ts <= 0) {
+        frames.push(
+          JSON.stringify({ error: "invalid_timestamp", message: "Invalid timestamp provided for replay request" })
+        )
+      } else {
+        this.replayRequested = true
+        const log = (this.hubChannel && MockWebSocket.messages.get(this.hubChannel)) || []
+        const missed = log.filter((m) => m.timestamp > ts) // already oldest-first (push order)
+        for (const m of missed) frames.push(m.data)
+        frames.push(JSON.stringify({ status: "replay_complete", count: missed.length }))
+      }
+    }
+
+    // Deliver asynchronously, in order, to mimic a server response over the network
+    setTimeout(() => {
+      for (const data of frames) {
+        if (this.onmessage) this.onmessage({ data })
+        for (const handler of this.onmessageHandlers) handler({ data })
+      }
+    }, 0)
   }
 
   // Method to handle incoming messages
@@ -100,9 +165,8 @@ export class MockWebSocket {
       return
     }
 
-    // Ignore JSON RPC messages with method: 'replay'
-    // These are intended for the bridge server only and should not be broadcast and relayed to other clients
-    // TODO: Implement actual replay logic to mirror the bridge server's replay logic
+    // Replay requests are handled by the (mock) server in send() and are never
+    // relayed to peers; ignore any that somehow reach a peer.
     if (parsed && parsed.method === "replay") {
       return
     }
@@ -240,6 +304,16 @@ export class MockWebSocket {
   // Static method to clear all bridge origins (useful for test cleanup)
   static clearBridgeOrigins() {
     MockWebSocket.bridgeOrigins.clear()
+  }
+
+  // Static method to clear all cached messages (useful for test cleanup)
+  static clearMessages() {
+    MockWebSocket.messages.clear()
+  }
+
+  // Number of live sockets in a channel (useful for deterministic tests)
+  static channelSize(channel: string): number {
+    return MockWebSocket.hub.get(channel)?.length ?? 0
   }
 
   // Static method to simulate a server-side disconnect for all connections in a channel
