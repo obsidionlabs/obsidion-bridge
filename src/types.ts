@@ -100,4 +100,5 @@ export interface BridgeOptions {
   pingInterval?: number
   bridgeUrl?: string
   originOnConnect?: boolean
+  pinOrigin?: boolean
 }

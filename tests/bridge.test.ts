@@ -345,6 +345,44 @@ describe("Bridge", () => {
     expect(error).toContain(wrongOrigin)
   })
 
+  test("should adopt the real origin on connect when pinOrigin is false", async () => {
+    const actualOrigin = "https://actual-ooc-origin.com"
+    const wrongOrigin = "https://wrong-ooc-origin.com"
+
+    await using creator = await Bridge.create({ ...CREATE_OPTIONS, origin: actualOrigin })
+    await waitForCallback(creator.onConnect)
+
+    const tamperedConnectionString = creator.connectionString.replace(actualOrigin, wrongOrigin)
+
+    await using joiner = await Bridge.join(tamperedConnectionString, { ...JOIN_OPTIONS, pinOrigin: false })
+
+    // The origin is unknown until the server reports it
+    expect(joiner.origin).toBeUndefined()
+    expect(() => joiner.connectionString).toThrow("Bridge origin is not known yet")
+
+    await waitForCallback(joiner.onSecureChannelEstablished)
+
+    expect(joiner.origin).toBe(actualOrigin)
+    expect(joiner.connectionString).toContain(`d=${actualOrigin}`)
+    // @ts-expect-error private property
+    expect(joiner.connection._originValidatedViaOoc).toBe(true)
+  })
+
+  test("should reject pinOrigin: false when no origin can be adopted", async () => {
+    await using creator = await Bridge.create(CREATE_OPTIONS)
+    await waitForCallback(creator.onConnect)
+
+    // Without originOnConnect the server never reports the origin, so there is nothing to adopt
+    await expect(
+      Bridge.join(creator.connectionString, { ...JOIN_OPTIONS, pinOrigin: false, originOnConnect: false })
+    ).rejects.toThrow("pinOrigin")
+
+    // A resumed session skips the origin report as well
+    await expect(
+      Bridge.join(creator.connectionString, { ...JOIN_OPTIONS, pinOrigin: false, resume: true, keyPair: keyPairMobile })
+    ).rejects.toThrow("pinOrigin")
+  })
+
   test("should ignore unsolicited ooc messages", async () => {
     const { BridgeConnection } = await import("../src/bridge-connection")
     const connection = new BridgeConnection({

@@ -72,7 +72,8 @@ export class BridgeConnection {
   constructor(options: BridgeOptions) {
     this.role = options.role
     this.origin = options.origin
-    this._bridgeOrigin = options.domain
+    const shouldPinOrigin = options.pinOrigin ?? true
+    this._bridgeOrigin = shouldPinOrigin ? options.domain : undefined
     this.log = debug(`bridge:${this.role}`)
     this.bridgeId = options.bridgeId || generateRandomId(16)
     this.keyPair = options.keyPair
@@ -763,21 +764,26 @@ export class BridgeConnection {
 
   /**
    * Get the bridge origin (the origin of the creator)
+   * Undefined for a joiner with pinOrigin disabled until the origin-on-connect message arrives
    */
-  public get bridgeOrigin(): string {
-    if (this.role === "creator") return this.origin!
-    else return this._bridgeOrigin!
+  public get bridgeOrigin(): string | undefined {
+    if (this.role === "creator") return this.origin
+    else return this._bridgeOrigin
   }
 
   /**
    * Get a connection string URI for joining the bridge
    */
   public get connectionString(): string {
+    const bridgeOrigin = this.bridgeOrigin
+    if (!bridgeOrigin) {
+      throw new Error("Bridge origin is not known yet, wait for the secure channel to be established")
+    }
     const oocParam = this.originOnConnect ? "&ooc" : ""
     if (this.role === "creator") {
-      return `obsidion:${this.getPublicKey()}?d=${this.bridgeOrigin!}&v=${PROTOCOL_VERSION}${oocParam}`
+      return `obsidion:${this.getPublicKey()}?d=${bridgeOrigin}&v=${PROTOCOL_VERSION}${oocParam}`
     } else {
-      return `obsidion:${this.getBridgeId()}?d=${this.bridgeOrigin!}&v=${PROTOCOL_VERSION}${oocParam}`
+      return `obsidion:${this.getBridgeId()}?d=${bridgeOrigin}&v=${PROTOCOL_VERSION}${oocParam}`
     }
   }
 

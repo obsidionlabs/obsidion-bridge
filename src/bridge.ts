@@ -36,6 +36,7 @@ export interface JoinOptions {
   pingInterval?: number
   bridgeUrl?: string
   originOnConnect?: boolean
+  pinOrigin?: boolean
 }
 
 /**
@@ -55,7 +56,7 @@ export interface BridgeInterface extends Disposable {
   isSecureChannelEstablished: () => boolean
   sendMessage: (method: string, params?: any) => Promise<boolean>
   connectionString: string
-  origin: string
+  origin: string | undefined
   bridgeId: string
   getPublicKey: () => string
   getRemotePublicKey: () => string
@@ -145,7 +146,7 @@ export class Bridge {
       isBridgeConnected: () => connection.isBridgeConnected(),
       isSecureChannelEstablished: () => connection.isSecureChannelEstablished(),
       sendMessage: (method, params) => connection.sendSecureMessage(method, params || {}),
-      connectionString: connection.connectionString!,
+      connectionString: connection.connectionString,
       bridgeId: connection.getBridgeId(),
       origin: connection.bridgeOrigin,
       getKeyPair: () => connection.keyPair,
@@ -184,6 +185,10 @@ export class Bridge {
     // Determine originOnConnect: use explicit option if provided, otherwise use value from connection string
     const originOnConnect = options.originOnConnect !== undefined ? options.originOnConnect : ooc
 
+    if (options.pinOrigin === false && (!originOnConnect || options.resume)) {
+      throw new Error("pinOrigin: false requires originOnConnect and cannot be combined with resume")
+    }
+
     // Create connection instance with joiner role and domain
     const connection = new BridgeConnection({
       role: "joiner",
@@ -195,6 +200,7 @@ export class Bridge {
       pingInterval: options.pingInterval,
       bridgeUrl: options.bridgeUrl,
       originOnConnect,
+      pinOrigin: options.pinOrigin,
     })
 
     // Set remote public key
@@ -223,9 +229,13 @@ export class Bridge {
       isBridgeConnected: () => connection.isBridgeConnected(),
       isSecureChannelEstablished: () => connection.isSecureChannelEstablished(),
       sendMessage: (method, params) => connection.sendSecureMessage(method, params || {}),
-      connectionString: connection.connectionString!,
+      get connectionString() {
+        return connection.connectionString
+      },
       bridgeId: connection.getBridgeId(),
-      origin: connection.bridgeOrigin,
+      get origin() {
+        return connection.bridgeOrigin
+      },
       getKeyPair: () => connection.keyPair,
       getPublicKey: () => connection.getPublicKey(),
       getRemotePublicKey: () => connection.getRemotePublicKey(),
