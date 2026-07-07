@@ -352,8 +352,6 @@ describe("Bridge", () => {
     await using creator = await Bridge.create({ ...CREATE_OPTIONS, origin: actualOrigin })
     await waitForCallback(creator.onConnect)
 
-    // The connection string claims a wrong origin, but with pinning disabled the
-    // joiner should adopt the creator's real origin instead of rejecting the mismatch
     const tamperedConnectionString = creator.connectionString.replace(actualOrigin, wrongOrigin)
 
     await using joiner = await Bridge.join(tamperedConnectionString, { ...JOIN_OPTIONS, pinOrigin: false })

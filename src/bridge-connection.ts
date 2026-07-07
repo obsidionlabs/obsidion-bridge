@@ -72,8 +72,6 @@ export class BridgeConnection {
   constructor(options: BridgeOptions) {
     this.role = options.role
     this.origin = options.origin
-    // With pinOrigin disabled, the expected origin is left unset here so it is
-    // adopted later from the origin-on-connect message instead
     const shouldPinOrigin = options.pinOrigin ?? true
     this._bridgeOrigin = shouldPinOrigin ? options.domain : undefined
     this.log = debug(`bridge:${this.role}`)

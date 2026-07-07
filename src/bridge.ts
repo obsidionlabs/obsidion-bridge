@@ -56,7 +56,6 @@ export interface BridgeInterface extends Disposable {
   isSecureChannelEstablished: () => boolean
   sendMessage: (method: string, params?: any) => Promise<boolean>
   connectionString: string
-  // Undefined for a joiner with pinOrigin: false until the secure channel is established
   origin: string | undefined
   bridgeId: string
   getPublicKey: () => string
