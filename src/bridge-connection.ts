@@ -72,8 +72,6 @@ export class BridgeConnection {
   constructor(options: BridgeOptions) {
     this.role = options.role
     this.origin = options.origin
-    // Disable pinning to let the app decide which origins to allow, instead of rejecting
-    // every origin that differs from the connection string
     const shouldPinOrigin = options.pinOrigin ?? true
     this._bridgeOrigin = shouldPinOrigin ? options.domain : undefined
     this.log = debug(`bridge:${this.role}`)
