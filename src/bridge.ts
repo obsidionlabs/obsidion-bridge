@@ -36,9 +36,6 @@ export interface JoinOptions {
   pingInterval?: number
   bridgeUrl?: string
   originOnConnect?: boolean
-  // Defaults to true. When false, the joiner does not pin the connection-string
-  // origin and instead adopts the real origin reported via origin-on-connect,
-  // leaving origin trust to the caller.
   pinOrigin?: boolean
 }
 
@@ -59,7 +56,8 @@ export interface BridgeInterface extends Disposable {
   isSecureChannelEstablished: () => boolean
   sendMessage: (method: string, params?: any) => Promise<boolean>
   connectionString: string
-  origin: string
+  // Undefined for a joiner with pinOrigin: false until the secure channel is established
+  origin: string | undefined
   bridgeId: string
   getPublicKey: () => string
   getRemotePublicKey: () => string
@@ -149,13 +147,9 @@ export class Bridge {
       isBridgeConnected: () => connection.isBridgeConnected(),
       isSecureChannelEstablished: () => connection.isSecureChannelEstablished(),
       sendMessage: (method, params) => connection.sendSecureMessage(method, params || {}),
-      connectionString: connection.connectionString!,
+      connectionString: connection.connectionString,
       bridgeId: connection.getBridgeId(),
-      // Live getter: with pinOrigin disabled the real origin is only known once
-      // the origin-on-connect report arrives, after this object is returned.
-      get origin() {
-        return connection.bridgeOrigin
-      },
+      origin: connection.bridgeOrigin,
       getKeyPair: () => connection.keyPair,
       getPublicKey: () => connection.getPublicKey(),
       // TODO: Deprecate close() and use cleanup() instead
@@ -191,6 +185,10 @@ export class Bridge {
 
     // Determine originOnConnect: use explicit option if provided, otherwise use value from connection string
     const originOnConnect = options.originOnConnect !== undefined ? options.originOnConnect : ooc
+
+    if (options.pinOrigin === false && (!originOnConnect || options.resume)) {
+      throw new Error("pinOrigin: false requires originOnConnect and cannot be combined with resume")
+    }
 
     // Create connection instance with joiner role and domain
     const connection = new BridgeConnection({
@@ -232,10 +230,10 @@ export class Bridge {
       isBridgeConnected: () => connection.isBridgeConnected(),
       isSecureChannelEstablished: () => connection.isSecureChannelEstablished(),
       sendMessage: (method, params) => connection.sendSecureMessage(method, params || {}),
-      connectionString: connection.connectionString!,
+      get connectionString() {
+        return connection.connectionString
+      },
       bridgeId: connection.getBridgeId(),
-      // Live getter: with pinOrigin disabled the real origin is only known once
-      // the origin-on-connect report arrives, after this object is returned.
       get origin() {
         return connection.bridgeOrigin
       },

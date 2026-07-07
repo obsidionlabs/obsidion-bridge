@@ -100,9 +100,8 @@ export class MockWebSocket {
       return
     }
 
-    // Ignore JSON RPC messages with method: 'replay'
-    // These are intended for the bridge server only and should not be broadcast and relayed to other clients
-    // TODO: Implement actual replay logic to mirror the bridge server's replay logic
+    // Replay requests are meant for the bridge server only, never for other clients
+    // TODO: Mirror the bridge server's replay logic in this mock
     if (parsed && parsed.method === "replay") {
       return
     }
