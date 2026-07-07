@@ -72,6 +72,7 @@ export class BridgeConnection {
   constructor(options: BridgeOptions) {
     this.role = options.role
     this.origin = options.origin
+    // Without pinning, the origin stays unset until the server reports it on connect
     const shouldPinOrigin = options.pinOrigin ?? true
     this._bridgeOrigin = shouldPinOrigin ? options.domain : undefined
     this.log = debug(`bridge:${this.role}`)
