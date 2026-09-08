@@ -249,11 +249,7 @@ export class BridgeConnection {
       // If not yet connected then fire a FailedToConnect event and return
       // This is often due to a network or DNS error
       if (!this.isConnected) {
-        const failedToConnectEvent = new FailedToConnectEvent({
-          code: event.code,
-          reason: event.reason,
-          event: event,
-        })
+        const failedToConnectEvent = new FailedToConnectEvent({ code: event.code, reason: event.reason, event: event })
         await this.emit(BridgeEventType.FailedToConnect, failedToConnectEvent)
         return
       }
