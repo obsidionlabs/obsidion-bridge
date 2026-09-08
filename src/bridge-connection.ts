@@ -197,6 +197,11 @@ export class BridgeConnection {
       }
     }
 
+    websocket.onerror = (event: any) => {
+      // Without a handler the ws package turns socket errors into uncaught exceptions
+      this.log("[websocket.onerror]", event?.message ?? "socket error")
+    }
+
     websocket.onmessage = async (event: any) => {
       // Emit the raw message received event
       await this.emit(BridgeEventType.RawMessageReceived, event.data)
