@@ -232,6 +232,8 @@ export class BridgeConnection {
           event: event,
         })
         await this.emit(BridgeEventType.Disconnected, disconnectedEvent)
+        // A wake-up may have opened a new socket while the listeners ran; this close is then old news
+        if (this.websocket !== websocket) return
       }
 
       // If the close was intentional then cleanup and return

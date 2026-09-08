@@ -217,12 +217,20 @@ describe("Bridge", () => {
     expect(creator.isBridgeConnected()).toBe(false)
     expect(disconnects.map((event) => event.willReconnect)).toEqual([true, false])
     expect(disconnects[1].wasIntentionalClose).toBe(false)
+  })
 
-    // A wake-up can still bring the connection back
-    const reconnected = waitForCallback(creator.onConnect)
+  test("should not open a second socket when a wake-up happens while a disconnect listener runs", async () => {
+    await using creator = await Bridge.create(CREATE_OPTIONS)
+    await waitForCallback(creator.onConnect)
+
+    creator.onDisconnect(() => delay(100))
+    creator.websocket!.close()
+    await delay(10)
     expect(creator.connection.reconnectIfDisconnected()).toBe(true)
-    await reconnected
+    await delay(300)
+
     expect(creator.isBridgeConnected()).toBe(true)
+    expect(MockWebSocket.channelSize(creator.bridgeId)).toBe(1)
   })
 
   test("should stop reconnecting when cleaned up during the backoff", async () => {
