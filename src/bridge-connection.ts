@@ -8,6 +8,7 @@ import { parseOriginHeader, generateRandomId } from "./utils"
 import {
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
   DEFAULT_PING_INTERVAL,
+  VERSION,
   DEFAULT_WS_ENDPOINT,
   PROTOCOL_VERSION,
 } from "./constants"
@@ -75,6 +76,7 @@ export class BridgeConnection {
     const shouldPinOrigin = options.pinOrigin ?? true
     this._bridgeOrigin = shouldPinOrigin ? options.domain : undefined
     this.log = debug(`bridge:${this.role}`)
+    this.log(`@obsidion/bridge v${VERSION}`)
     this.bridgeId = options.bridgeId || generateRandomId(16)
     this.keyPair = options.keyPair
     this.reconnect = options.reconnect ?? true
@@ -229,6 +231,13 @@ export class BridgeConnection {
       if (this.intentionalClose) {
         this.log("Intentional close, not attempting reconnect")
         this._handleCleanup()
+        return
+      }
+
+      // A reconnect attempt that never opened must not end the retry chain
+      if (!this.isConnected && this.isReconnecting) {
+        this.log("Reconnection attempt failed")
+        await this.handleReconnect()
         return
       }
 

@@ -30,6 +30,9 @@ export class MockWebSocket {
   // One replay allowed per connection (per MockWebSocket instance)
   private replayRequested = false
 
+  // Number of upcoming connections that should fail before opening (simulates a network error)
+  private static connectionsToFail = 0
+
   constructor(
     url: string,
     {
@@ -60,10 +63,21 @@ export class MockWebSocket {
     }
 
     setTimeout(() => {
+      if (MockWebSocket.connectionsToFail > 0) {
+        MockWebSocket.connectionsToFail--
+        this.close(1006, "Connection failed")
+        return
+      }
       this.readyState = MockWebSocket.OPEN
       if (this.onConnectInterceptor) this.onConnectInterceptor()
       if (this.onopen) this.onopen()
     }, 10)
+  }
+
+  // Make the next `count` connections fail before opening, like a browser socket
+  // that fires `close` without ever firing `open` when the network is unreachable
+  static failNextConnections(count: number) {
+    MockWebSocket.connectionsToFail = count
   }
 
   send(data: string) {
@@ -207,6 +221,7 @@ export class MockWebSocket {
   close(code = 1000, reason = "Normal closure") {
     // Only trigger close events if the socket was open
     const wasOpen = this.readyState === MockWebSocket.OPEN
+    const wasConnecting = this.readyState === MockWebSocket.CONNECTING
 
     this.readyState = MockWebSocket.CLOSED
 
@@ -224,8 +239,8 @@ export class MockWebSocket {
       }
     }
 
-    // Trigger close events if the socket was previously open
-    if (wasOpen) {
+    // Trigger close events if the socket was previously open or never managed to open
+    if (wasOpen || wasConnecting) {
       this.triggerCloseHandlers(code, reason)
     }
   }

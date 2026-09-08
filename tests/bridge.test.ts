@@ -3,6 +3,9 @@ import { bytesToHex, hexToBytes } from "@noble/ciphers/utils"
 import { getSharedSecret } from "../src/encryption"
 import { Bridge, CreateOptions, JoinOptions } from "../src"
 import { mockWebSocket, waitForCallback, delay, BRIDGE_URL } from "./helpers"
+import { MockWebSocket } from "./helpers/mock-websocket"
+import { VERSION } from "../src/constants"
+import pkg from "../package.json"
 
 // Enable debug logging for tests
 import debug from "debug"
@@ -29,6 +32,10 @@ const keyPairMobile = {
 }
 
 describe("Bridge", () => {
+  test("should report the package version", () => {
+    expect(VERSION).toBe(pkg.version)
+  })
+
   test("should connect to bridge and establish secure channel", async () => {
     await using creator = await Bridge.create(CREATE_OPTIONS)
     // Set up listener early to avoid race conditions
@@ -144,6 +151,30 @@ describe("Bridge", () => {
     joiner.sendMessage("after reconnect", {})
     const message = await creatorOnMessage
     expect(message).toEqual({ method: "after reconnect", params: {} })
+  })
+
+  test("should keep retrying when a reconnect attempt fails", async () => {
+    await using creator = await Bridge.create(CREATE_OPTIONS)
+    const onCreatorSecureChannelEstablished = waitForCallback(creator.onSecureChannelEstablished)
+    await waitForCallback(creator.onConnect)
+
+    await using joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
+    await waitForCallback(joiner.onSecureChannelEstablished)
+    await onCreatorSecureChannelEstablished
+    expect(joiner.isBridgeConnected()).toBe(true)
+
+    // The first reconnect attempt fails (e.g. the network is not back yet), the second one succeeds
+    MockWebSocket.failNextConnections(1)
+    const reconnected = waitForCallback(joiner.onConnect)
+    ;(joiner.websocket as unknown as MockWebSocket).simulateServerDisconnect()
+    expect(joiner.isBridgeConnected()).toBe(false)
+
+    await reconnected
+    expect(joiner.isBridgeConnected()).toBe(true)
+
+    const creatorOnMessage = waitForCallback(creator.onSecureMessage)
+    joiner.sendMessage("after failed reconnect attempt", {})
+    expect(await creatorOnMessage).toEqual({ method: "after failed reconnect attempt", params: {} })
   })
 
   test("should correctly set config options", async () => {
