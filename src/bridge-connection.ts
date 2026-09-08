@@ -8,7 +8,6 @@ import { parseOriginHeader, generateRandomId } from "./utils"
 import {
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
   DEFAULT_PING_INTERVAL,
-  VERSION,
   DEFAULT_WS_ENDPOINT,
   PROTOCOL_VERSION,
 } from "./constants"
@@ -20,8 +19,6 @@ import { BridgeEventType, BridgeDisconnectedEvent as DisconnectedEvent, FailedTo
  *
  * A single class that handles both creator and joiner roles and manages its own state
  */
-const WS_CLOSED = 3
-
 export class BridgeConnection {
   private log: debug.Debugger
   private role: "creator" | "joiner"
@@ -44,8 +41,6 @@ export class BridgeConnection {
   private isReconnecting = false
   private isConnected = false
   private everConnected = false
-  private onPageVisible?: () => void
-  private onPageOnline?: () => void
   private resumedSession = false
   private bridgeUrl?: string
   private validMessagesReceived = 0
@@ -81,7 +76,6 @@ export class BridgeConnection {
     const shouldPinOrigin = options.pinOrigin ?? true
     this._bridgeOrigin = shouldPinOrigin ? options.domain : undefined
     this.log = debug(`bridge:${this.role}`)
-    this.log(`@obsidion/bridge v${VERSION}`)
     this.bridgeId = options.bridgeId || generateRandomId(16)
     this.keyPair = options.keyPair
     this.reconnect = options.reconnect ?? true
@@ -104,7 +98,10 @@ export class BridgeConnection {
       [BridgeEventType.Disconnected]: [],
     }
 
-    this.addWakeListeners()
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", this.reconnectOnWake)
+      window.addEventListener("online", this.reconnectOnWake)
+    }
   }
 
   public resume(): void {
@@ -581,40 +578,24 @@ export class BridgeConnection {
       }
     }, reconnectIn)
   }
+
   /**
-   * Reconnect right away if the connection was lost, skipping any pending backoff delay
-   * and any exhausted attempt limit. Does nothing while connected, while an attempt is
-   * in flight, or after the bridge was closed on purpose.
-   * In browsers this runs automatically when the page becomes visible or goes back online.
+   * Reconnect right away if the connection was lost, without waiting for the next scheduled
+   * attempt. In browsers this runs on its own when the page becomes visible or goes back online.
    * @returns true if a reconnection attempt was started
    */
   public reconnectIfDisconnected(): boolean {
     if (this.intentionalClose || !this.reconnect || !this.everConnected) return false
-    if (this.websocket && this.websocket.readyState !== WS_CLOSED) return false
+    if (this.websocket?.readyState !== WebSocket.CLOSED) return false
 
-    this.log("Connection lost while inactive, reconnecting now")
+    this.log("Connection lost, reconnecting now")
     this.resetReconnection()
     void this.handleReconnect()
     return true
   }
 
-  private addWakeListeners(): void {
-    if (typeof window === "undefined" || typeof document === "undefined") return
-    this.onPageVisible = () => {
-      if (document.visibilityState === "visible") this.reconnectIfDisconnected()
-    }
-    this.onPageOnline = () => {
-      this.reconnectIfDisconnected()
-    }
-    document.addEventListener("visibilitychange", this.onPageVisible)
-    window.addEventListener("online", this.onPageOnline)
-  }
-
-  private removeWakeListeners(): void {
-    if (this.onPageVisible) document.removeEventListener("visibilitychange", this.onPageVisible)
-    if (this.onPageOnline) window.removeEventListener("online", this.onPageOnline)
-    this.onPageVisible = undefined
-    this.onPageOnline = undefined
+  private reconnectOnWake = () => {
+    if (document.visibilityState === "visible") this.reconnectIfDisconnected()
   }
 
   /**
@@ -863,7 +844,10 @@ export class BridgeConnection {
   private _handleCleanup(): void {
     this.log("Cleaning up event listeners and associated state")
 
-    this.removeWakeListeners()
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", this.reconnectOnWake)
+      window.removeEventListener("online", this.reconnectOnWake)
+    }
 
     // Cleanup timers
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)

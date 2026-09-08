@@ -30,7 +30,6 @@ export class MockWebSocket {
   // One replay allowed per connection (per MockWebSocket instance)
   private replayRequested = false
 
-  // Number of upcoming connections that should fail before opening (simulates a network error)
   private static connectionsToFail = 0
 
   constructor(
@@ -74,8 +73,7 @@ export class MockWebSocket {
     }, 10)
   }
 
-  // Make the next `count` connections fail before opening, like a browser socket
-  // that fires `close` without ever firing `open` when the network is unreachable
+  // Make the next `count` connections close without ever opening, like when the network is unreachable
   static failNextConnections(count: number) {
     MockWebSocket.connectionsToFail = count
   }
