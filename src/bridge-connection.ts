@@ -224,9 +224,9 @@ export class BridgeConnection {
         const disconnectedEvent = new DisconnectedEvent({
           code: event.code,
           reason: event.reason,
-          wasConnected: this.isConnected,
+          wasConnected: true,
           wasIntentionalClose: this.intentionalClose,
-          willReconnect: !this.intentionalClose && this.isConnected && this.reconnect,
+          willReconnect: !this.intentionalClose && this.reconnect,
           event: event,
         })
         await this.emit(BridgeEventType.Disconnected, disconnectedEvent)
@@ -249,15 +249,12 @@ export class BridgeConnection {
       // If not yet connected then fire a FailedToConnect event and return
       // This is often due to a network or DNS error
       if (!this.isConnected) {
-        const isConnectionError = !this.isConnected && !this.intentionalClose
-        if (isConnectionError) {
-          const failedToConnectEvent = new FailedToConnectEvent({
-            code: event.code,
-            reason: event.reason,
-            event: event,
-          })
-          await this.emit(BridgeEventType.FailedToConnect, failedToConnectEvent)
-        }
+        const failedToConnectEvent = new FailedToConnectEvent({
+          code: event.code,
+          reason: event.reason,
+          event: event,
+        })
+        await this.emit(BridgeEventType.FailedToConnect, failedToConnectEvent)
         return
       }
 
