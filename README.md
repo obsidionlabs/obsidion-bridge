@@ -105,3 +105,19 @@ bridge.onError((error) => {
 // Cleanup the bridge when done
 bridge.cleanup()
 ```
+
+### Reconnection
+
+When a connection drops, the bridge reconnects on its own: the first attempt is immediate and the
+following ones back off (1s, 2s, 4s, ...) for up to 10 attempts. After reconnecting it asks the server to
+replay the messages it missed.
+
+In browsers the bridge also reconnects right away when the page becomes visible again or the browser goes
+back online, skipping any pending backoff delay and any exhausted attempt limit. The same can be triggered
+manually:
+
+```typescript
+bridge.connection.reconnectIfDisconnected()
+```
+
+Pass `reconnect: false` to `Bridge.create()` or `Bridge.join()` to disable automatic reconnection.

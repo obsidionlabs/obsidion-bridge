@@ -177,6 +177,63 @@ describe("Bridge", () => {
     expect(await creatorOnMessage).toEqual({ method: "after failed reconnect attempt", params: {} })
   })
 
+  test("should reconnect right away on wake-up instead of waiting for the backoff", async () => {
+    await using creator = await Bridge.create(CREATE_OPTIONS)
+    const onCreatorSecureChannelEstablished = waitForCallback(creator.onSecureChannelEstablished)
+    await waitForCallback(creator.onConnect)
+
+    await using joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
+    await waitForCallback(joiner.onSecureChannelEstablished)
+    await onCreatorSecureChannelEstablished
+
+    // Two failed attempts (immediate and after 1s) leave the third one waiting 2s
+    MockWebSocket.failNextConnections(2)
+    ;(joiner.websocket as unknown as MockWebSocket).simulateServerDisconnect()
+    await delay(1300)
+    expect(joiner.isBridgeConnected()).toBe(false)
+
+    const reconnected = waitForCallback(joiner.onConnect)
+    const start = Date.now()
+    expect(joiner.connection.reconnectIfDisconnected()).toBe(true)
+    await reconnected
+    expect(Date.now() - start).toBeLessThan(1000)
+    expect(joiner.isBridgeConnected()).toBe(true)
+  })
+
+  test("should reconnect on wake-up after all attempts were used up", async () => {
+    await using creator = await Bridge.create(CREATE_OPTIONS)
+    const onCreatorSecureChannelEstablished = waitForCallback(creator.onSecureChannelEstablished)
+    await waitForCallback(creator.onConnect)
+
+    await using joiner = await Bridge.join(creator.connectionString, JOIN_OPTIONS)
+    await waitForCallback(joiner.onSecureChannelEstablished)
+    await onCreatorSecureChannelEstablished
+
+    // @ts-expect-error private property
+    joiner.connection.maxReconnectAttempts = 1
+    MockWebSocket.failNextConnections(1)
+    ;(joiner.websocket as unknown as MockWebSocket).simulateServerDisconnect()
+    await delay(200)
+    expect(joiner.isBridgeConnected()).toBe(false)
+
+    const reconnected = waitForCallback(joiner.onConnect)
+    expect(joiner.connection.reconnectIfDisconnected()).toBe(true)
+    await reconnected
+    expect(joiner.isBridgeConnected()).toBe(true)
+  })
+
+  test("should not reconnect on wake-up while connected or after closing on purpose", async () => {
+    await using creator = await Bridge.create(CREATE_OPTIONS)
+    await waitForCallback(creator.onConnect)
+    expect(creator.connection.reconnectIfDisconnected()).toBe(false)
+    expect(creator.isBridgeConnected()).toBe(true)
+
+    creator.connection.cleanup()
+    await delay(50)
+    expect(creator.connection.reconnectIfDisconnected()).toBe(false)
+    expect(creator.isBridgeConnected()).toBe(false)
+  })
+
   test("should correctly set config options", async () => {
     await using creator1 = await Bridge.create(CREATE_OPTIONS)
     // @ts-expect-error private property

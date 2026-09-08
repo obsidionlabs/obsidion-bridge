@@ -20,6 +20,8 @@ import { BridgeEventType, BridgeDisconnectedEvent as DisconnectedEvent, FailedTo
  *
  * A single class that handles both creator and joiner roles and manages its own state
  */
+const WS_CLOSED = 3
+
 export class BridgeConnection {
   private log: debug.Debugger
   private role: "creator" | "joiner"
@@ -41,6 +43,9 @@ export class BridgeConnection {
   private pingInterval = 30000
   private isReconnecting = false
   private isConnected = false
+  private everConnected = false
+  private onPageVisible?: () => void
+  private onPageOnline?: () => void
   private resumedSession = false
   private bridgeUrl?: string
   private validMessagesReceived = 0
@@ -98,6 +103,8 @@ export class BridgeConnection {
       [BridgeEventType.FailedToConnect]: [],
       [BridgeEventType.Disconnected]: [],
     }
+
+    this.addWakeListeners()
   }
 
   public resume(): void {
@@ -152,6 +159,7 @@ export class BridgeConnection {
   private setupWebSocketHandlers(websocket: WebSocketClient): void {
     websocket.onopen = async () => {
       this.isConnected = true
+      this.everConnected = true
 
       // Set up ping timer
       if (this.pingTimer) clearInterval(this.pingTimer)
@@ -574,6 +582,42 @@ export class BridgeConnection {
     }, reconnectIn)
   }
   /**
+   * Reconnect right away if the connection was lost, skipping any pending backoff delay
+   * and any exhausted attempt limit. Does nothing while connected, while an attempt is
+   * in flight, or after the bridge was closed on purpose.
+   * In browsers this runs automatically when the page becomes visible or goes back online.
+   * @returns true if a reconnection attempt was started
+   */
+  public reconnectIfDisconnected(): boolean {
+    if (this.intentionalClose || !this.reconnect || !this.everConnected) return false
+    if (this.websocket && this.websocket.readyState !== WS_CLOSED) return false
+
+    this.log("Connection lost while inactive, reconnecting now")
+    this.resetReconnection()
+    void this.handleReconnect()
+    return true
+  }
+
+  private addWakeListeners(): void {
+    if (typeof window === "undefined" || typeof document === "undefined") return
+    this.onPageVisible = () => {
+      if (document.visibilityState === "visible") this.reconnectIfDisconnected()
+    }
+    this.onPageOnline = () => {
+      this.reconnectIfDisconnected()
+    }
+    document.addEventListener("visibilitychange", this.onPageVisible)
+    window.addEventListener("online", this.onPageOnline)
+  }
+
+  private removeWakeListeners(): void {
+    if (this.onPageVisible) document.removeEventListener("visibilitychange", this.onPageVisible)
+    if (this.onPageOnline) window.removeEventListener("online", this.onPageOnline)
+    this.onPageVisible = undefined
+    this.onPageOnline = undefined
+  }
+
+  /**
    * Reset reconnection state
    */
   private resetReconnection(): void {
@@ -818,6 +862,8 @@ export class BridgeConnection {
 
   private _handleCleanup(): void {
     this.log("Cleaning up event listeners and associated state")
+
+    this.removeWakeListeners()
 
     // Cleanup timers
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
