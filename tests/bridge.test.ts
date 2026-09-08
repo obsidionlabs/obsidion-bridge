@@ -225,6 +225,21 @@ describe("Bridge", () => {
     expect(creator.isBridgeConnected()).toBe(true)
   })
 
+  test("should stop reconnecting when cleaned up during the backoff", async () => {
+    const creator = await Bridge.create(CREATE_OPTIONS)
+    await waitForCallback(creator.onConnect)
+
+    // The first attempt fails at once, leaving the second one waiting 1s
+    MockWebSocket.failNextConnections(1)
+    creator.websocket!.close()
+    await delay(100)
+    expect(creator.isBridgeConnected()).toBe(false)
+
+    creator.cleanup()
+    await delay(1200)
+    expect(creator.isBridgeConnected()).toBe(false)
+  })
+
   test("should correctly set config options", async () => {
     await using creator1 = await Bridge.create(CREATE_OPTIONS)
     // @ts-expect-error private property

@@ -895,6 +895,12 @@ export class BridgeConnection {
   public cleanup(): void {
     this.log("Closing connection to bridge")
     this.intentionalClose = true
-    this.websocket?.close(1000, "Connection closed by user")
+    const readyState = this.websocket?.readyState
+    if (readyState === WebSocket.OPEN || readyState === WebSocket.CONNECTING) {
+      this.websocket!.close(1000, "Connection closed by user")
+    } else {
+      // An already closed socket fires no close event, so nothing else would cancel a pending reconnect
+      this._handleCleanup()
+    }
   }
 }
