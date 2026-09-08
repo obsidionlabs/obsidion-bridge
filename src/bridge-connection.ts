@@ -81,7 +81,7 @@ export class BridgeConnection {
     this.keyPair = options.keyPair
     this.reconnect = options.reconnect ?? true
     this.keepalive = options.keepalive ?? true
-    this.maxReconnectAttempts = options.reconnectAttempts || DEFAULT_MAX_RECONNECT_ATTEMPTS
+    this.maxReconnectAttempts = options.reconnectAttempts ?? DEFAULT_MAX_RECONNECT_ATTEMPTS
     this.pingInterval = options.pingInterval || DEFAULT_PING_INTERVAL
     this.bridgeUrl = options.bridgeUrl ?? DEFAULT_WS_ENDPOINT
     // Both creator and joiner can control originOnConnect (defaults to true)
@@ -554,7 +554,7 @@ export class BridgeConnection {
     if (this.reconnectAttempts > this.maxReconnectAttempts) {
       this.log(`WebSocket disconnected, max reconnection attempts (${this.maxReconnectAttempts}) reached`)
       this.resetReconnection()
-      // Listeners only heard about the drop itself so far; tell them no more attempts will follow
+      // Tell listeners the retries have stopped
       const closeEvent = this.lastCloseEvent!
       await this.emit(
         BridgeEventType.Disconnected,
