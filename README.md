@@ -120,4 +120,7 @@ manually:
 bridge.connection.reconnectIfDisconnected()
 ```
 
+Once the attempts run out, `onDisconnect` fires a second time with `willReconnect: false`. Nothing more
+happens on its own after that, but a wake-up or a manual `reconnectIfDisconnected()` still reconnects.
+
 Pass `reconnect: false` to `Bridge.create()` or `Bridge.join()` to disable automatic reconnection.

@@ -1,7 +1,7 @@
 import { describe, test, expect, mock, setDefaultTimeout } from "bun:test"
 import { bytesToHex, hexToBytes } from "@noble/ciphers/utils"
 import { getSharedSecret } from "../src/encryption"
-import { Bridge, CreateOptions, JoinOptions } from "../src"
+import { Bridge, BridgeDisconnectedEvent, CreateOptions, JoinOptions } from "../src"
 import { mockWebSocket, MockWebSocket, waitForCallback, delay, BRIDGE_URL } from "./helpers"
 
 // Enable debug logging for tests
@@ -196,6 +196,32 @@ describe("Bridge", () => {
     await waitForCallback(creator.onConnect)
 
     expect(creator.connection.reconnectIfDisconnected()).toBe(false)
+    expect(creator.isBridgeConnected()).toBe(true)
+  })
+
+  test("should report a final disconnect when all reconnect attempts fail", async () => {
+    await using creator = await Bridge.create(CREATE_OPTIONS)
+    await waitForCallback(creator.onConnect)
+
+    const disconnects: BridgeDisconnectedEvent[] = []
+    creator.onDisconnect((event) => {
+      disconnects.push(event)
+    })
+
+    // @ts-expect-error private property
+    creator.connection.maxReconnectAttempts = 1
+    MockWebSocket.failNextConnections(1)
+    creator.websocket!.close()
+    await delay(200)
+
+    expect(creator.isBridgeConnected()).toBe(false)
+    expect(disconnects.map((event) => event.willReconnect)).toEqual([true, false])
+    expect(disconnects[1].wasIntentionalClose).toBe(false)
+
+    // A wake-up can still bring the connection back
+    const reconnected = waitForCallback(creator.onConnect)
+    expect(creator.connection.reconnectIfDisconnected()).toBe(true)
+    await reconnected
     expect(creator.isBridgeConnected()).toBe(true)
   })
 

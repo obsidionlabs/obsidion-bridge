@@ -45,6 +45,7 @@ export class BridgeConnection {
   private bridgeUrl?: string
   private validMessagesReceived = 0
   private lastMessageTimestamp: number = 0
+  private lastCloseEvent?: CloseEvent
   private originOnConnect: boolean
   private _originValidatedViaOoc = false
 
@@ -215,6 +216,7 @@ export class BridgeConnection {
     websocket.onclose = async (event: CloseEvent) => {
       const { code, reason, wasClean } = event
       this.log("[websocket.onclose]", { code, reason, wasClean, readyState: websocket.readyState })
+      this.lastCloseEvent = event
 
       // Clear the ping timer if it is set
       if (this.pingTimer) clearInterval(this.pingTimer)
@@ -545,6 +547,19 @@ export class BridgeConnection {
     if (this.reconnectAttempts > this.maxReconnectAttempts) {
       this.log(`WebSocket disconnected, max reconnection attempts (${this.maxReconnectAttempts}) reached`)
       this.resetReconnection()
+      // Listeners only heard about the drop itself so far; tell them no more attempts will follow
+      const closeEvent = this.lastCloseEvent!
+      await this.emit(
+        BridgeEventType.Disconnected,
+        new DisconnectedEvent({
+          code: closeEvent.code,
+          reason: closeEvent.reason,
+          wasConnected: true,
+          wasIntentionalClose: false,
+          willReconnect: false,
+          event: closeEvent,
+        })
+      )
       return
     }
 
