@@ -1,8 +1,8 @@
-import { describe, test, expect, mock, setDefaultTimeout } from "bun:test"
+import { beforeEach, describe, test, expect, mock, setDefaultTimeout } from "bun:test"
 import { bytesToHex, hexToBytes } from "@noble/ciphers/utils"
 import { getSharedSecret } from "../src/encryption"
-import { Bridge, CreateOptions, JoinOptions } from "../src"
-import { mockWebSocket, waitForCallback, delay, BRIDGE_URL } from "./helpers"
+import { Bridge, BridgeDisconnectedEvent, CreateOptions, JoinOptions } from "../src"
+import { mockWebSocket, MockWebSocket, waitForCallback, delay, BRIDGE_URL } from "./helpers"
 
 // Enable debug logging for tests
 import debug from "debug"
@@ -29,6 +29,8 @@ const keyPairMobile = {
 }
 
 describe("Bridge", () => {
+  beforeEach(() => MockWebSocket.failNextConnections(0))
+
   test("should connect to bridge and establish secure channel", async () => {
     await using creator = await Bridge.create(CREATE_OPTIONS)
     // Set up listener early to avoid race conditions
@@ -144,6 +146,126 @@ describe("Bridge", () => {
     joiner.sendMessage("after reconnect", {})
     const message = await creatorOnMessage
     expect(message).toEqual({ method: "after reconnect", params: {} })
+  })
+
+  test("should keep retrying when a reconnect attempt fails", async () => {
+    await using creator = await Bridge.create(CREATE_OPTIONS)
+    await waitForCallback(creator.onConnect)
+
+    MockWebSocket.failNextConnections(1)
+    const reconnected = waitForCallback(creator.onConnect)
+    creator.websocket!.close()
+    await reconnected
+    expect(creator.isBridgeConnected()).toBe(true)
+  })
+
+  test("should reconnect right away on wake-up instead of waiting for the backoff", async () => {
+    await using creator = await Bridge.create(CREATE_OPTIONS)
+    await waitForCallback(creator.onConnect)
+
+    // The first attempt fails at once, leaving the second one waiting 1s
+    MockWebSocket.failNextConnections(1)
+    creator.websocket!.close()
+    await delay(100)
+    expect(creator.isBridgeConnected()).toBe(false)
+
+    const reconnected = waitForCallback(creator.onConnect)
+    const start = Date.now()
+    expect(creator.connection.reconnectIfDisconnected()).toBe(true)
+    await reconnected
+    expect(Date.now() - start).toBeLessThan(800)
+  })
+
+  test("should reconnect on wake-up after all attempts were used up", async () => {
+    await using creator = await Bridge.create(CREATE_OPTIONS)
+    await waitForCallback(creator.onConnect)
+
+    // @ts-expect-error private property
+    creator.connection.maxReconnectAttempts = 1
+    MockWebSocket.failNextConnections(1)
+    creator.websocket!.close()
+    await delay(200)
+    expect(creator.isBridgeConnected()).toBe(false)
+
+    const reconnected = waitForCallback(creator.onConnect)
+    expect(creator.connection.reconnectIfDisconnected()).toBe(true)
+    await reconnected
+    expect(creator.isBridgeConnected()).toBe(true)
+  })
+
+  test("should not reconnect on wake-up while connected", async () => {
+    await using creator = await Bridge.create(CREATE_OPTIONS)
+    await waitForCallback(creator.onConnect)
+
+    expect(creator.connection.reconnectIfDisconnected()).toBe(false)
+    expect(creator.isBridgeConnected()).toBe(true)
+  })
+
+  test("should report a final disconnect when all reconnect attempts fail", async () => {
+    await using creator = await Bridge.create(CREATE_OPTIONS)
+    await waitForCallback(creator.onConnect)
+
+    const disconnects: BridgeDisconnectedEvent[] = []
+    creator.onDisconnect((event) => {
+      disconnects.push(event)
+    })
+
+    // @ts-expect-error private property
+    creator.connection.maxReconnectAttempts = 1
+    MockWebSocket.failNextConnections(1)
+    creator.websocket!.close()
+    await delay(200)
+
+    expect(creator.isBridgeConnected()).toBe(false)
+    expect(disconnects.map((event) => event.willReconnect)).toEqual([true, false])
+    expect(disconnects[1].wasIntentionalClose).toBe(false)
+  })
+
+  test("should not open a second socket when a wake-up happens while a disconnect listener runs", async () => {
+    await using creator = await Bridge.create(CREATE_OPTIONS)
+    await waitForCallback(creator.onConnect)
+
+    creator.onDisconnect(() => delay(100))
+    creator.websocket!.close()
+    await delay(10)
+    expect(creator.connection.reconnectIfDisconnected()).toBe(true)
+    await delay(300)
+
+    expect(creator.isBridgeConnected()).toBe(true)
+    expect(MockWebSocket.channelSize(creator.bridgeId)).toBe(1)
+  })
+
+  test("should not report a second loss when the socket opened on wake-up fails", async () => {
+    await using creator = await Bridge.create(CREATE_OPTIONS)
+    await waitForCallback(creator.onConnect)
+
+    const disconnects: BridgeDisconnectedEvent[] = []
+    creator.onDisconnect(async (event) => {
+      disconnects.push(event)
+      await delay(100)
+    })
+    creator.websocket!.close()
+    await delay(10)
+    MockWebSocket.failNextConnections(1)
+    expect(creator.connection.reconnectIfDisconnected()).toBe(true)
+    await delay(300)
+
+    expect(disconnects).toHaveLength(1)
+  })
+
+  test("should stop reconnecting when cleaned up during the backoff", async () => {
+    const creator = await Bridge.create(CREATE_OPTIONS)
+    await waitForCallback(creator.onConnect)
+
+    // The first attempt fails at once, leaving the second one waiting 1s
+    MockWebSocket.failNextConnections(1)
+    creator.websocket!.close()
+    await delay(100)
+    expect(creator.isBridgeConnected()).toBe(false)
+
+    creator.cleanup()
+    await delay(1200)
+    expect(creator.isBridgeConnected()).toBe(false)
   })
 
   test("should correctly set config options", async () => {
