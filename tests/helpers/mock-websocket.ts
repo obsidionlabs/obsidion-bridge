@@ -1,10 +1,12 @@
 import { jest } from "bun:test"
+import { WebSocketReadyState } from "../../src/types"
 
 export class MockWebSocket {
-  static readonly CONNECTING = 0
-  static readonly OPEN = 1
-  static readonly CLOSING = 2
-  static readonly CLOSED = 3
+  // Same ready state numbers as a real socket
+  static readonly CONNECTING = WebSocketReadyState.CONNECTING
+  static readonly OPEN = WebSocketReadyState.OPEN
+  static readonly CLOSING = WebSocketReadyState.CLOSING
+  static readonly CLOSED = WebSocketReadyState.CLOSED
 
   // Static hub to manage connections between MockWebSocket instances
   private static hub: Map<string, MockWebSocket[]> = new Map()
@@ -31,6 +33,7 @@ export class MockWebSocket {
   private replayRequested = false
 
   private static connectionsToFail = 0
+  private static connectDelay = 10
 
   constructor(
     url: string,
@@ -70,12 +73,17 @@ export class MockWebSocket {
       this.readyState = MockWebSocket.OPEN
       if (this.onConnectInterceptor) this.onConnectInterceptor()
       if (this.onopen) this.onopen()
-    }, 10)
+    }, MockWebSocket.connectDelay)
   }
 
   // Make the next `count` connections close without ever opening, like when the network is unreachable
   static failNextConnections(count: number) {
     MockWebSocket.connectionsToFail = count
+  }
+
+  // Make new connections take `ms` to open, like on a slow network
+  static delayConnections(ms: number) {
+    MockWebSocket.connectDelay = ms
   }
 
   send(data: string) {

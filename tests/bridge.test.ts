@@ -29,7 +29,10 @@ const keyPairMobile = {
 }
 
 describe("Bridge", () => {
-  beforeEach(() => MockWebSocket.failNextConnections(0))
+  beforeEach(() => {
+    MockWebSocket.failNextConnections(0)
+    MockWebSocket.delayConnections(10)
+  })
 
   test("should connect to bridge and establish secure channel", async () => {
     await using creator = await Bridge.create(CREATE_OPTIONS)
@@ -221,7 +224,7 @@ describe("Bridge", () => {
     expect(disconnects[1].wasIntentionalClose).toBe(false)
   })
 
-  test("should not open a second socket when a wake-up happens while a disconnect listener runs", async () => {
+  test("should not open a second socket when a wake-up lands while disconnect listeners run", async () => {
     await using creator = await Bridge.create(CREATE_OPTIONS)
     await waitForCallback(creator.onConnect)
 
@@ -253,6 +256,22 @@ describe("Bridge", () => {
     expect(disconnects).toHaveLength(1)
   })
 
+  test("should not open a second socket when a disconnect listener reconnects mid-handshake", async () => {
+    await using creator = await Bridge.create(CREATE_OPTIONS)
+    await waitForCallback(creator.onConnect)
+
+    creator.onDisconnect(() => {
+      creator.connection.reconnectIfDisconnected()
+    })
+    // Slow handshake, so a duplicate attempt after the 1s backoff would show up as a second socket
+    MockWebSocket.delayConnections(1100)
+    creator.websocket!.close()
+    await delay(1300)
+
+    expect(MockWebSocket.channelSize(creator.bridgeId)).toBe(1)
+    expect(creator.isBridgeConnected()).toBe(true)
+  })
+
   test("should stop reconnecting when cleaned up during the backoff", async () => {
     const creator = await Bridge.create(CREATE_OPTIONS)
     await waitForCallback(creator.onConnect)
@@ -266,6 +285,21 @@ describe("Bridge", () => {
     creator.cleanup()
     await delay(1200)
     expect(creator.isBridgeConnected()).toBe(false)
+  })
+
+  test("should clean up on runtimes without a built-in WebSocket", async () => {
+    const creator = await Bridge.create(CREATE_OPTIONS)
+    await waitForCallback(creator.onConnect)
+
+    const builtInWebSocket = globalThis.WebSocket
+    // @ts-expect-error simulate Node without a global WebSocket
+    delete globalThis.WebSocket
+    try {
+      creator.cleanup()
+      expect(creator.isBridgeConnected()).toBe(false)
+    } finally {
+      globalThis.WebSocket = builtInWebSocket
+    }
   })
 
   test("should correctly set config options", async () => {

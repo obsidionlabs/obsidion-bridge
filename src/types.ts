@@ -20,6 +20,14 @@ export enum BridgeEventType {
   Disconnected = "disconnected",
 }
 
+// Node before 22 has no global WebSocket to read these off
+export enum WebSocketReadyState {
+  CONNECTING = 0,
+  OPEN = 1,
+  CLOSING = 2,
+  CLOSED = 3,
+}
+
 /**
  * Bridge failed to connect event
  */
