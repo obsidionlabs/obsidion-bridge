@@ -1,4 +1,4 @@
-export { mockWebSocket } from "./mock-websocket"
+export { mockWebSocket, MockWebSocket } from "./mock-websocket"
 
 // Bridge endpoint used when running against a real server (USE_REAL_BRIDGE_SERVER=1).
 // Ignored in mock mode. Override with the BRIDGE_URL env var.

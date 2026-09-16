@@ -12,7 +12,12 @@ import {
   PROTOCOL_VERSION,
 } from "./constants"
 import type { BridgeEventCallback, BridgeOptions, KeyPair } from "./types"
-import { BridgeEventType, BridgeDisconnectedEvent as DisconnectedEvent, FailedToConnectEvent } from "./types"
+import {
+  BridgeEventType,
+  BridgeDisconnectedEvent as DisconnectedEvent,
+  FailedToConnectEvent,
+  WebSocketReadyState,
+} from "./types"
 
 /**
  * BridgeConnection implementation
@@ -40,10 +45,13 @@ export class BridgeConnection {
   private pingInterval = 30000
   private isReconnecting = false
   private isConnected = false
+  private everConnected = false
+  private isCreatingSocket = false
   private resumedSession = false
   private bridgeUrl?: string
   private validMessagesReceived = 0
   private lastMessageTimestamp: number = 0
+  private lastCloseEvent?: CloseEvent // Reported back when the retries run out
   private originOnConnect: boolean
   private _originValidatedViaOoc = false
 
@@ -79,7 +87,7 @@ export class BridgeConnection {
     this.keyPair = options.keyPair
     this.reconnect = options.reconnect ?? true
     this.keepalive = options.keepalive ?? true
-    this.maxReconnectAttempts = options.reconnectAttempts || DEFAULT_MAX_RECONNECT_ATTEMPTS
+    this.maxReconnectAttempts = options.reconnectAttempts ?? DEFAULT_MAX_RECONNECT_ATTEMPTS
     this.pingInterval = options.pingInterval || DEFAULT_PING_INTERVAL
     this.bridgeUrl = options.bridgeUrl ?? DEFAULT_WS_ENDPOINT
     // Both creator and joiner can control originOnConnect (defaults to true)
@@ -95,6 +103,11 @@ export class BridgeConnection {
       [BridgeEventType.Error]: [],
       [BridgeEventType.FailedToConnect]: [],
       [BridgeEventType.Disconnected]: [],
+    }
+
+    if (this.reconnect && typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", this.reconnectOnWake)
+      window.addEventListener("online", this.reconnectOnWake)
     }
   }
 
@@ -150,6 +163,7 @@ export class BridgeConnection {
   private setupWebSocketHandlers(websocket: WebSocketClient): void {
     websocket.onopen = async () => {
       this.isConnected = true
+      this.everConnected = true
 
       // Set up ping timer
       if (this.pingTimer) clearInterval(this.pingTimer)
@@ -189,6 +203,11 @@ export class BridgeConnection {
       }
     }
 
+    websocket.onerror = (event: any) => {
+      // Without a handler the ws package turns socket errors into uncaught exceptions
+      this.log("[websocket.onerror]", event?.message ?? "socket error")
+    }
+
     websocket.onmessage = async (event: any) => {
       // Emit the raw message received event
       await this.emit(BridgeEventType.RawMessageReceived, event.data)
@@ -208,21 +227,28 @@ export class BridgeConnection {
     websocket.onclose = async (event: CloseEvent) => {
       const { code, reason, wasClean } = event
       this.log("[websocket.onclose]", { code, reason, wasClean, readyState: websocket.readyState })
+      this.lastCloseEvent = event
 
       // Clear the ping timer if it is set
       if (this.pingTimer) clearInterval(this.pingTimer)
 
+      const wasConnected = this.isConnected
+      this.isConnected = false
+
       // If connected then fire a Disconnected event
-      if (this.isConnected) {
+      if (wasConnected) {
         const disconnectedEvent = new DisconnectedEvent({
           code: event.code,
           reason: event.reason,
-          wasConnected: this.isConnected,
+          wasConnected: true,
           wasIntentionalClose: this.intentionalClose,
-          willReconnect: !this.intentionalClose && this.isConnected && this.reconnect,
+          willReconnect: !this.intentionalClose && this.reconnect,
           event: event,
         })
         await this.emit(BridgeEventType.Disconnected, disconnectedEvent)
+        // A wake-up may have started reconnecting while the listeners ran
+        const reconnectAlreadyStarted = this.websocket !== websocket || this.isReconnecting
+        if (reconnectAlreadyStarted) return
       }
 
       // If the close was intentional then cleanup and return
@@ -232,24 +258,23 @@ export class BridgeConnection {
         return
       }
 
+      // A reconnect attempt that never opened must not end the retry chain
+      if (!wasConnected && this.isReconnecting) {
+        this.log("Reconnection attempt failed")
+        await this.handleReconnect()
+        return
+      }
+
       // If not yet connected then fire a FailedToConnect event and return
       // This is often due to a network or DNS error
-      if (!this.isConnected) {
-        const isConnectionError = !this.isConnected && !this.intentionalClose
-        if (isConnectionError) {
-          const failedToConnectEvent = new FailedToConnectEvent({
-            code: event.code,
-            reason: event.reason,
-            event: event,
-          })
-          await this.emit(BridgeEventType.FailedToConnect, failedToConnectEvent)
-        }
+      if (!wasConnected) {
+        const failedToConnectEvent = new FailedToConnectEvent({ code: event.code, reason: event.reason, event: event })
+        await this.emit(BridgeEventType.FailedToConnect, failedToConnectEvent)
         return
       }
 
       // This point is only reached if the connection was established prior to closing and .cleanup() was not called
       this.log("WebSocket closed")
-      this.isConnected = false
       if (this.reconnect) await this.handleReconnect()
     }
   }
@@ -538,6 +563,19 @@ export class BridgeConnection {
     if (this.reconnectAttempts > this.maxReconnectAttempts) {
       this.log(`WebSocket disconnected, max reconnection attempts (${this.maxReconnectAttempts}) reached`)
       this.resetReconnection()
+      const closeEvent = this.lastCloseEvent!
+      // Retries only start after a connection was established
+      await this.emit(
+        BridgeEventType.Disconnected,
+        new DisconnectedEvent({
+          code: closeEvent.code,
+          reason: closeEvent.reason,
+          wasConnected: true,
+          wasIntentionalClose: false,
+          willReconnect: false,
+          event: closeEvent,
+        })
+      )
       return
     }
 
@@ -553,6 +591,7 @@ export class BridgeConnection {
     }
 
     this.reconnectTimer = setTimeout(async () => {
+      this.isCreatingSocket = true
       try {
         const reconnectionUrl = await this._getWsConnectionUrl()
         // Create new WebSocket connection
@@ -561,9 +600,33 @@ export class BridgeConnection {
       } catch (error) {
         this.log("Reconnection failed:", error)
         await this.handleReconnect()
+      } finally {
+        this.isCreatingSocket = false
       }
     }, reconnectIn)
   }
+
+  /**
+   * Reconnect right away if the connection was lost, without waiting for the next scheduled
+   * attempt. In browsers this runs on its own when the page becomes visible or goes back online.
+   * @returns true if a reconnection attempt was started
+   */
+  public reconnectIfDisconnected(): boolean {
+    if (this.intentionalClose || !this.reconnect || !this.everConnected) return false
+    // Already connected, or an attempt is already under way
+    if (this.isCreatingSocket || this.websocket?.readyState !== WebSocketReadyState.CLOSED) return false
+
+    this.log("Connection lost, reconnecting now")
+    this.resetReconnection()
+    void this.handleReconnect()
+    return true
+  }
+
+  private reconnectOnWake = () => {
+    // Coming back online in a hidden tab can wait until it is looked at again
+    if (document.visibilityState === "visible") this.reconnectIfDisconnected()
+  }
+
   /**
    * Reset reconnection state
    */
@@ -584,7 +647,7 @@ export class BridgeConnection {
     if (!this.websocket) {
       return false
     }
-    return this.websocket.readyState === WebSocket.OPEN
+    return this.websocket.readyState === WebSocketReadyState.OPEN
   }
 
   /**
@@ -810,6 +873,11 @@ export class BridgeConnection {
   private _handleCleanup(): void {
     this.log("Cleaning up event listeners and associated state")
 
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", this.reconnectOnWake)
+      window.removeEventListener("online", this.reconnectOnWake)
+    }
+
     // Cleanup timers
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
     this.reconnectTimer = undefined
@@ -848,6 +916,12 @@ export class BridgeConnection {
   public cleanup(): void {
     this.log("Closing connection to bridge")
     this.intentionalClose = true
-    this.websocket?.close(1000, "Connection closed by user")
+    const readyState = this.websocket?.readyState
+    if (readyState === WebSocketReadyState.OPEN || readyState === WebSocketReadyState.CONNECTING) {
+      this.websocket!.close(1000, "Connection closed by user")
+    } else {
+      // An already closed socket fires no close event, so nothing else would cancel a pending reconnect
+      this._handleCleanup()
+    }
   }
 }
