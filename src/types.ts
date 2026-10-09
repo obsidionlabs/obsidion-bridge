@@ -109,4 +109,5 @@ export interface BridgeOptions {
   bridgeUrl?: string
   originOnConnect?: boolean
   pinOrigin?: boolean
+  replayFrom?: number
 }

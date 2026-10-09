@@ -22,6 +22,8 @@ export interface CreateOptions {
   pingInterval?: number
   bridgeUrl?: string
   originOnConnect?: boolean
+  /** Ask the server for everything sent on this bridge since this time. Use 1 for everything. */
+  replayFrom?: number
 }
 
 /**
@@ -116,6 +118,7 @@ export class Bridge {
       pingInterval: options.pingInterval,
       bridgeUrl: options.bridgeUrl,
       originOnConnect: options.originOnConnect ?? true,
+      replayFrom: options.replayFrom,
     })
 
     // Resume existing bridge session if requested
