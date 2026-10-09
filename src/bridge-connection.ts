@@ -92,6 +92,7 @@ export class BridgeConnection {
     this.bridgeUrl = options.bridgeUrl ?? DEFAULT_WS_ENDPOINT
     // Both creator and joiner can control originOnConnect (defaults to true)
     this.originOnConnect = options.originOnConnect ?? true
+    if (options.replayFrom) this.lastMessageTimestamp = options.replayFrom
 
     // Initialize event listeners
     this.eventListeners = {
@@ -178,16 +179,14 @@ export class BridgeConnection {
         // Reset state relating to reconnection
         this.resetReconnection()
 
-        // Request message replay if we have a last message timestamp
-        if (this.lastMessageTimestamp > 0 && this.websocket) {
-          const replayTimestamp = this.lastMessageTimestamp - 1000
-          this.log(`Requesting message replay starting from ${replayTimestamp}`)
-          this.websocket.send(JSON.stringify({ method: "replay", params: { timestamp: replayTimestamp } }))
-        }
+        this.requestMessageReplay()
         // Emit the connected event with reconnection flag set to true
         await this.emit(BridgeEventType.Connected, true)
       } else {
         this.log("Connected to bridge")
+
+        // A replayFrom means this connection is rejoining a bridge, so ask for what it missed
+        this.requestMessageReplay()
 
         // Set initial timestamp for requesting message replay if needed
         if (this.lastMessageTimestamp === 0) this.lastMessageTimestamp = Date.now()
@@ -277,6 +276,16 @@ export class BridgeConnection {
       this.log("WebSocket closed")
       if (this.reconnect) await this.handleReconnect()
     }
+  }
+
+  /**
+   * Ask the server to resend everything on this bridge since the last message we saw
+   */
+  private requestMessageReplay(): void {
+    if (this.lastMessageTimestamp <= 0 || !this.websocket) return
+    const timestamp = Math.max(1, this.lastMessageTimestamp - 1000)
+    this.log(`Requesting message replay starting from ${timestamp}`)
+    this.websocket.send(JSON.stringify({ method: "replay", params: { timestamp } }))
   }
 
   /**
