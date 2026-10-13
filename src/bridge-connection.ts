@@ -528,7 +528,6 @@ export class BridgeConnection {
 
         // Store the chunk at the correct index
         message.chunks[index] = decryptedJson.params
-        await this.emit(BridgeEventType.ChunkRecieved, decryptedJson.chunk)
 
         // Check if we have received all chunks (no undefined values in the array)
         const allChunksReceived = (() => {
@@ -540,7 +539,16 @@ export class BridgeConnection {
           return true
         })()
 
-        if (allChunksReceived) {
+        // Chunks that arrive in the same tick are processed concurrently, so more than
+        // one of them can see a complete set. Dropping the entry claims the message:
+        // delete only succeeds for the first, and that one reassembles and emits it.
+        // Keep the check and the claim in the same synchronous step, with no await
+        // between them, or the claim is no longer exclusive.
+        const claimed = allChunksReceived && this.incompleteMessages.delete(id)
+
+        await this.emit(BridgeEventType.ChunkRecieved, decryptedJson.chunk)
+
+        if (claimed) {
           // recompose the chunks into the message
           const fullMessage = message.chunks.join("")
           const compressedMessage = Buffer.from(fullMessage, "base64")
@@ -549,8 +557,6 @@ export class BridgeConnection {
           const decryptedPayload = JSON.parse(decompressedText)
           this.log(`Received all chunks for chunk id ${id}, reconstructing message`)
           const returnValue = { method: decryptedJson.method, params: decryptedPayload }
-          // delete the message from the map
-          this.incompleteMessages.delete(id)
           // Notify listeners about the received message
           await this.emit(BridgeEventType.MessageReceived, returnValue)
         }
