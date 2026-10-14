@@ -539,16 +539,13 @@ export class BridgeConnection {
           return true
         })()
 
-        // Chunks that arrive in the same tick are processed concurrently, so more than
-        // one of them can see a complete set. Dropping the entry claims the message:
-        // delete only succeeds for the first, and that one reassembles and emits it.
-        // Keep the check and the claim in the same synchronous step, with no await
-        // between them, or the claim is no longer exclusive.
-        const claimed = allChunksReceived && this.incompleteMessages.delete(id)
+        // Several chunks can be handled at the same time, so more than one can see a full set.
+        // Deleting the entry picks a single winner, so keep it right after the check, no await between.
+        const shouldEmit = allChunksReceived && this.incompleteMessages.delete(id)
 
         await this.emit(BridgeEventType.ChunkRecieved, decryptedJson.chunk)
 
-        if (claimed) {
+        if (shouldEmit) {
           // recompose the chunks into the message
           const fullMessage = message.chunks.join("")
           const compressedMessage = Buffer.from(fullMessage, "base64")
