@@ -235,6 +235,30 @@ function onceSecureMessage(
   })
 }
 
+describe("Message replay (on a fresh connection)", () => {
+  test("replayFrom delivers what arrived while the creator was gone", async () => {
+    const original = await Bridge.create(CREATE_OPTIONS)
+    await waitForCallback(original.onConnect)
+    const keyPair = original.getKeyPair()
+    original.close()
+
+    const joiner = await rawConnect(original.bridgeId, "https://joiner.example")
+    await sendStored(joiner, msg("missed-1", "A"), msg("missed-2", "B"))
+    await delay(100)
+
+    const received: string[] = []
+    await using rebuilt = await Bridge.create({ ...CREATE_OPTIONS, keyPair, replayFrom: 1 })
+    rebuilt.onRawMessage((raw: string) => {
+      const { id } = JSON.parse(raw)
+      if (id) received.push(id)
+    })
+    await waitForCallback(rebuilt.onConnect)
+    await delay(200)
+
+    expect(received).toEqual(["missed-1", "missed-2"])
+  })
+})
+
 describe("Message replay (on reconnect)", () => {
   test("messages still flow after a reconnect triggers a replay", async () => {
     await using creator = await Bridge.create(CREATE_OPTIONS)
