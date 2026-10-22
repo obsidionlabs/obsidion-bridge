@@ -1,5 +1,6 @@
 import { beforeEach, describe, test, expect, mock, setDefaultTimeout } from "bun:test"
-import { getSharedSecret } from "../src/encryption"
+import { bytesToHex } from "@noble/ciphers/utils"
+import { encrypt, getSharedSecret } from "../src/encryption"
 import { getEncryptedJsonPayload } from "../src/json-rpc"
 import { Bridge, BridgeInterface, CreateOptions, JoinOptions } from "../src"
 import { mockWebSocket, MockWebSocket, waitForCallback, delay, BRIDGE_URL } from "./helpers"
@@ -51,5 +52,38 @@ describe("Duplicate delivery", () => {
     await delay(200)
 
     expect(received).toEqual([{ method: "proof", params: { payload } }])
+  })
+
+  test("holds encrypted frames that arrive before the replayed handshake", async () => {
+    const original = await Bridge.create(CREATE_OPTIONS)
+    await waitForCallback(original.onConnect)
+    const keyPair = original.getKeyPair()
+    const bridgeId = original.bridgeId
+    original.close()
+
+    const joinerKeyPair = await Bridge.generateKeyPair()
+    const sharedSecret = getSharedSecret(joinerKeyPair.privateKey, keyPair.publicKey)
+    const greeting = Buffer.from(await encrypt("hello", sharedSecret, bridgeId)).toString("hex")
+    const handshake = JSON.stringify({
+      jsonrpc: "2.0",
+      id: "handshake-1",
+      method: "handshake",
+      params: { pubkey: bytesToHex(joinerKeyPair.publicKey), greeting },
+    })
+    const { chunks } = await getEncryptedJsonPayload("proof", { payload: "p" }, sharedSecret, bridgeId)
+
+    const received: any[] = []
+    const errors: string[] = []
+    await using rebuilt = await Bridge.create({ ...CREATE_OPTIONS, keyPair, replayFrom: 1 })
+    rebuilt.onSecureMessage((message) => received.push(message))
+    rebuilt.onError((error) => errors.push(error))
+    await waitForCallback(rebuilt.onConnect)
+
+    // The live copy lands first, then the replay brings the handshake and the same frame again
+    deliver(rebuilt, ...chunks, handshake, ...chunks)
+    await delay(200)
+
+    expect(errors).toEqual([])
+    expect(received).toEqual([{ method: "proof", params: { payload: "p" } }])
   })
 })

@@ -72,6 +72,8 @@ export class BridgeConnection {
 
   // Set to track seen JSON RPC message IDs (both sent and received)
   private seenMessageIds: Set<string> = new Set()
+  // Encrypted frames that arrived before the handshake that gives us the shared secret
+  private pendingEncryptedMessages: any[] = []
 
   /**
    * Create a new bridge connection
@@ -346,6 +348,14 @@ export class BridgeConnection {
       return
     }
 
+    // A replay can deliver live or queued frames ahead of the handshake they were encrypted
+    // under. Hold them, unmarked, so the copy the replay brings later is not dropped as a duplicate.
+    if (data.method === "encryptedMessage" && !this.sharedSecret) {
+      this.log("Holding encrypted message until the handshake arrives:", data.id)
+      this.pendingEncryptedMessages.push(data)
+      return
+    }
+
     // Check for duplicate message id
     if (this.seenMessageIds.has(data.id)) {
       this.log("Ignoring message with duplicate id:", data.id)
@@ -448,6 +458,10 @@ export class BridgeConnection {
         // Mark secure channel as established
         this.secureChannelEstablished = true
         await this.emit(BridgeEventType.SecureChannelEstablished)
+      }
+
+      while (this.pendingEncryptedMessages.length > 0) {
+        await this.handleWebSocketMessage(this.pendingEncryptedMessages.shift())
       }
     } catch (error) {
       this.log("Error handling handshake:", error)
@@ -908,6 +922,7 @@ export class BridgeConnection {
     this.secureChannelEstablished = false
     this.sharedSecret = undefined
     this.remotePublicKey = undefined
+    this.pendingEncryptedMessages = []
 
     // Clear all event listeners
     this.eventListeners = {
