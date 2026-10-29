@@ -72,6 +72,8 @@ export class BridgeConnection {
 
   // Set to track seen JSON RPC message IDs (both sent and received)
   private seenMessageIds: Set<string> = new Set()
+  // Encrypted frames that arrived before the handshake that gives us the shared secret
+  private pendingEncryptedMessages: any[] = []
 
   /**
    * Create a new bridge connection
@@ -92,6 +94,7 @@ export class BridgeConnection {
     this.bridgeUrl = options.bridgeUrl ?? DEFAULT_WS_ENDPOINT
     // Both creator and joiner can control originOnConnect (defaults to true)
     this.originOnConnect = options.originOnConnect ?? true
+    if (options.replayFrom) this.lastMessageTimestamp = options.replayFrom
 
     // Initialize event listeners
     this.eventListeners = {
@@ -178,16 +181,14 @@ export class BridgeConnection {
         // Reset state relating to reconnection
         this.resetReconnection()
 
-        // Request message replay if we have a last message timestamp
-        if (this.lastMessageTimestamp > 0 && this.websocket) {
-          const replayTimestamp = this.lastMessageTimestamp - 1000
-          this.log(`Requesting message replay starting from ${replayTimestamp}`)
-          this.websocket.send(JSON.stringify({ method: "replay", params: { timestamp: replayTimestamp } }))
-        }
+        this.requestMessageReplay()
         // Emit the connected event with reconnection flag set to true
         await this.emit(BridgeEventType.Connected, true)
       } else {
         this.log("Connected to bridge")
+
+        // A replayFrom means this connection is rejoining a bridge, so ask for what it missed
+        this.requestMessageReplay()
 
         // Set initial timestamp for requesting message replay if needed
         if (this.lastMessageTimestamp === 0) this.lastMessageTimestamp = Date.now()
@@ -280,6 +281,16 @@ export class BridgeConnection {
   }
 
   /**
+   * Ask the server to resend everything on this bridge since the last message we saw
+   */
+  private requestMessageReplay(): void {
+    if (this.lastMessageTimestamp <= 0 || !this.websocket) return
+    const timestamp = Math.max(1, this.lastMessageTimestamp - 1000)
+    this.log(`Requesting message replay starting from ${timestamp}`)
+    this.websocket.send(JSON.stringify({ method: "replay", params: { timestamp } }))
+  }
+
+  /**
    * Handle WebSocket messages based on message type
    */
   private async handleWebSocketMessage(data: any): Promise<void> {
@@ -334,6 +345,14 @@ export class BridgeConnection {
     // Check for missing message id
     if (!data.id) {
       this.log("Ignoring message with missing id:", data)
+      return
+    }
+
+    // A replay can deliver live or queued frames ahead of the handshake they were encrypted
+    // under. Hold them, unmarked, so the copy the replay brings later is not dropped as a duplicate.
+    if (data.method === "encryptedMessage" && !this.sharedSecret) {
+      this.log("Holding encrypted message until the handshake arrives:", data.id)
+      this.pendingEncryptedMessages.push(data)
       return
     }
 
@@ -440,6 +459,10 @@ export class BridgeConnection {
         this.secureChannelEstablished = true
         await this.emit(BridgeEventType.SecureChannelEstablished)
       }
+
+      while (this.pendingEncryptedMessages.length > 0) {
+        await this.handleWebSocketMessage(this.pendingEncryptedMessages.shift())
+      }
     } catch (error) {
       this.log("Error handling handshake:", error)
       await this.emit(
@@ -519,7 +542,6 @@ export class BridgeConnection {
 
         // Store the chunk at the correct index
         message.chunks[index] = decryptedJson.params
-        await this.emit(BridgeEventType.ChunkRecieved, decryptedJson.chunk)
 
         // Check if we have received all chunks (no undefined values in the array)
         const allChunksReceived = (() => {
@@ -531,7 +553,13 @@ export class BridgeConnection {
           return true
         })()
 
-        if (allChunksReceived) {
+        // Several chunks can be handled at the same time, so more than one can see a full set.
+        // Deleting the entry picks a single winner, so keep it right after the check, no await between.
+        const shouldEmit = allChunksReceived && this.incompleteMessages.delete(id)
+
+        await this.emit(BridgeEventType.ChunkRecieved, decryptedJson.chunk)
+
+        if (shouldEmit) {
           // recompose the chunks into the message
           const fullMessage = message.chunks.join("")
           const compressedMessage = Buffer.from(fullMessage, "base64")
@@ -540,8 +568,6 @@ export class BridgeConnection {
           const decryptedPayload = JSON.parse(decompressedText)
           this.log(`Received all chunks for chunk id ${id}, reconstructing message`)
           const returnValue = { method: decryptedJson.method, params: decryptedPayload }
-          // delete the message from the map
-          this.incompleteMessages.delete(id)
           // Notify listeners about the received message
           await this.emit(BridgeEventType.MessageReceived, returnValue)
         }
@@ -896,6 +922,7 @@ export class BridgeConnection {
     this.secureChannelEstablished = false
     this.sharedSecret = undefined
     this.remotePublicKey = undefined
+    this.pendingEncryptedMessages = []
 
     // Clear all event listeners
     this.eventListeners = {
