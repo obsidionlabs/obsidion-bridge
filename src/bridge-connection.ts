@@ -10,6 +10,7 @@ import {
   DEFAULT_PING_INTERVAL,
   DEFAULT_WS_ENDPOINT,
   PROTOCOL_VERSION,
+  NO_ORIGIN_PLACEHOLDER,
 } from "./constants"
 import type { BridgeEventCallback, BridgeOptions, KeyPair } from "./types"
 import {
@@ -319,6 +320,14 @@ export class BridgeConnection {
       const receivedOrigin = parseOriginHeader(data.params.origin)
       this.log("Received origin on connect:", receivedOrigin)
 
+      // The server reports this placeholder when the first connection to the bridge sent no Origin
+      // header, which is the joiner's own when it connects before the creator. With no origin
+      // pinned, the creator's origin is taken from its hello message instead.
+      if (!this._bridgeOrigin && receivedOrigin === NO_ORIGIN_PLACEHOLDER) {
+        this.log("Server has no origin for the creator. Waiting for its hello message")
+        return
+      }
+
       // If we already have an expected origin from the connection string, verify it matches
       if (this._bridgeOrigin && this._bridgeOrigin !== receivedOrigin) {
         this.log(`WARNING: Expected origin ${this._bridgeOrigin} but got ${receivedOrigin} (via ooc)`)
@@ -486,6 +495,10 @@ export class BridgeConnection {
         if (decryptedJson.method === "hello" && !this.secureChannelEstablished) {
           // handle handshake message
           this.log(`Verified origin: ${data.origin}`)
+          if (this.role === "joiner" && !this._bridgeOrigin && data.origin) {
+            this._bridgeOrigin = parseOriginHeader(data.origin)
+            this.log("Set bridge origin from hello:", this._bridgeOrigin)
+          }
           this.secureChannelEstablished = true
           // Notify listeners about the received message
           await this.emit(BridgeEventType.SecureChannelEstablished)

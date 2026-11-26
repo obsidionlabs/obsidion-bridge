@@ -524,6 +524,27 @@ describe("Bridge", () => {
     expect(joiner.connection._originValidatedViaOoc).toBe(true)
   })
 
+  test("should adopt the creator's origin from its first message when the server reports none", async () => {
+    const actualOrigin = "https://actual-ooc-origin.com"
+
+    await using creator = await Bridge.create({ ...CREATE_OPTIONS, origin: actualOrigin })
+    await waitForCallback(creator.onConnect)
+
+    // The server records "none" when the first connection to a bridge sent no Origin header
+    MockWebSocket.storeBridgeOrigin(creator.bridgeId, "none")
+
+    await using joiner = await Bridge.join(creator.connectionString, { ...JOIN_OPTIONS, pinOrigin: false })
+    await waitForCallback(joiner.onSecureChannelEstablished)
+
+    expect(joiner.origin).toBe(actualOrigin)
+    // @ts-expect-error private property
+    expect(joiner.connection._originValidatedViaOoc).toBe(false)
+
+    const onJoinerMessage = waitForCallback(joiner.onSecureMessage)
+    await creator.sendMessage("after hello", {})
+    expect((await onJoinerMessage).method).toBe("after hello")
+  })
+
   test("should reject pinOrigin: false when no origin can be adopted", async () => {
     await using creator = await Bridge.create(CREATE_OPTIONS)
     await waitForCallback(creator.onConnect)
